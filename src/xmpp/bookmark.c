@@ -46,23 +46,25 @@ static int autojoin_count;
 static Autocomplete bookmark_ac;
 static GList *bookmark_list;
 
-static int _bookmark_handle_result(xmpp_conn_t * const conn,
+static int _bookmark_handle_private_storage_result(xmpp_conn_t * const conn,
     xmpp_stanza_t * const stanza, void * const userdata);
-static int _bookmark_handle_delete(xmpp_conn_t * const conn,
+static void _send_private_storage_bookmarks_update(void);
+
+static int _delete_private_storage_request_handler(xmpp_conn_t * const conn,
     void * const userdata);
 static void _bookmark_item_destroy(gpointer item);
 static int _match_bookmark_by_jid(gconstpointer a, gconstpointer b);
-static void _send_bookmarks(void);
 
 void
 bookmark_request(void)
 {
+    // query for private storage bookmarks
     char *id;
     xmpp_conn_t *conn = connection_get_conn();
     xmpp_ctx_t *ctx = connection_get_ctx();
     xmpp_stanza_t *iq;
 
-    id = strdup("bookmark_init_request");
+    id = strdup("bookmark_private_storage_req");
 
     autojoin_count = 0;
     if (bookmark_ac != NULL) {
@@ -74,13 +76,15 @@ bookmark_request(void)
         bookmark_list = NULL;
     }
 
-    xmpp_timed_handler_add(conn, _bookmark_handle_delete, BOOKMARK_TIMEOUT, id);
-    xmpp_id_handler_add(conn, _bookmark_handle_result, id, id);
+    xmpp_timed_handler_add(conn, _delete_private_storage_request_handler, BOOKMARK_TIMEOUT, id);
+    xmpp_id_handler_add(conn, _bookmark_handle_private_storage_result, id, id);
 
-    iq = stanza_create_bookmarks_storage_request(ctx);
+    iq = stanza_create_bookmarks_private_storage_request(ctx);
     xmpp_stanza_set_id(iq, id);
     xmpp_send(conn, iq);
     xmpp_stanza_release(iq);
+
+    // TODO query for pubsub bookmarks
 }
 
 static gboolean
@@ -91,6 +95,10 @@ _bookmark_add(const char *jid, const char *nick, const char *password, const cha
     } else {
         Bookmark *item = malloc(sizeof(*item));
         item->jid = strdup(jid);
+
+        // TODO check for account storage preference
+        item->storage = STORAGE_PRIVATE;
+
         if (nick != NULL) {
             item->nick = strdup(nick);
         } else {
@@ -110,7 +118,7 @@ _bookmark_add(const char *jid, const char *nick, const char *password, const cha
 
         bookmark_list = g_list_append(bookmark_list, item);
         autocomplete_add(bookmark_ac, jid);
-        _send_bookmarks();
+        _send_private_storage_bookmarks_update();
 
         return TRUE;
     }
@@ -146,7 +154,7 @@ _bookmark_update(const char *jid, const char *nick, const char *password, const 
                 bm->autojoin = FALSE;
             }
         }
-        _send_bookmarks();
+        _send_private_storage_bookmarks_update();
         return TRUE;
     }
 }
@@ -201,7 +209,7 @@ _bookmark_remove(const char *jid)
         _bookmark_item_destroy(found->data);
         g_list_free(found);
         autocomplete_remove(bookmark_ac, jid);
-        _send_bookmarks();
+        _send_private_storage_bookmarks_update();
         return TRUE;
     } else {
         return FALSE;
@@ -229,7 +237,7 @@ _bookmark_autocomplete_reset(void)
 }
 
 static int
-_bookmark_handle_result(xmpp_conn_t * const conn,
+_bookmark_handle_private_storage_result(xmpp_conn_t * const conn,
     xmpp_stanza_t * const stanza, void * const userdata)
 {
     xmpp_ctx_t *ctx = connection_get_ctx();
@@ -245,7 +253,7 @@ _bookmark_handle_result(xmpp_conn_t * const conn,
     Jid *my_jid;
     Bookmark *item;
 
-    xmpp_timed_handler_delete(conn, _bookmark_handle_delete);
+    xmpp_timed_handler_delete(conn, _delete_private_storage_request_handler);
     g_free(id);
 
     name = xmpp_stanza_get_name(stanza);
@@ -314,6 +322,7 @@ _bookmark_handle_result(xmpp_conn_t * const conn,
         autocomplete_add(bookmark_ac, jid);
         item = malloc(sizeof(*item));
         item->jid = strdup(jid);
+        item->storage = STORAGE_PRIVATE;
         item->nick = name;
         item->password = password;
         item->autojoin = autojoin_val;
@@ -351,16 +360,14 @@ _bookmark_handle_result(xmpp_conn_t * const conn,
 }
 
 static int
-_bookmark_handle_delete(xmpp_conn_t * const conn,
+_delete_private_storage_request_handler(xmpp_conn_t * const conn,
     void * const userdata)
 {
     char *id = (char *)userdata;
-
     assert(id != NULL);
-
     log_debug("Timeout for handler with id=%s", id);
 
-    xmpp_id_handler_delete(conn, _bookmark_handle_result, id);
+    xmpp_id_handler_delete(conn, _bookmark_handle_private_storage_result, id);
     g_free(id);
 
     return 0;
@@ -391,11 +398,12 @@ _match_bookmark_by_jid(gconstpointer a, gconstpointer b)
 }
 
 static void
-_send_bookmarks(void)
+_send_private_storage_bookmarks_update(void)
 {
     xmpp_conn_t *conn = connection_get_conn();
     xmpp_ctx_t *ctx = connection_get_ctx();
 
+    // send private storage bookmarks
     xmpp_stanza_t *iq = xmpp_stanza_new(ctx);
     xmpp_stanza_set_name(iq, STANZA_NAME_IQ);
     char *id = generate_unique_id("bookmarks_update");
@@ -413,46 +421,48 @@ _send_bookmarks(void)
     GList *curr = bookmark_list;
     while (curr != NULL) {
         Bookmark *bookmark = curr->data;
-        xmpp_stanza_t *conference = xmpp_stanza_new(ctx);
-        xmpp_stanza_set_name(conference, STANZA_NAME_CONFERENCE);
-        xmpp_stanza_set_attribute(conference, STANZA_ATTR_JID, bookmark->jid);
+        if (bookmark->storage == STORAGE_PRIVATE) {
+            xmpp_stanza_t *conference = xmpp_stanza_new(ctx);
+            xmpp_stanza_set_name(conference, STANZA_NAME_CONFERENCE);
+            xmpp_stanza_set_attribute(conference, STANZA_ATTR_JID, bookmark->jid);
 
-        Jid *jidp = jid_create(bookmark->jid);
-        xmpp_stanza_set_attribute(conference, STANZA_ATTR_NAME, jidp->localpart);
-        jid_destroy(jidp);
+            Jid *jidp = jid_create(bookmark->jid);
+            xmpp_stanza_set_attribute(conference, STANZA_ATTR_NAME, jidp->localpart);
+            jid_destroy(jidp);
 
-        if (bookmark->autojoin) {
-            xmpp_stanza_set_attribute(conference, STANZA_ATTR_AUTOJOIN, "true");
-        } else {
-            xmpp_stanza_set_attribute(conference, STANZA_ATTR_AUTOJOIN, "false");
+            if (bookmark->autojoin) {
+                xmpp_stanza_set_attribute(conference, STANZA_ATTR_AUTOJOIN, "true");
+            } else {
+                xmpp_stanza_set_attribute(conference, STANZA_ATTR_AUTOJOIN, "false");
+            }
+
+            if (bookmark->nick != NULL) {
+                xmpp_stanza_t *nick_st = xmpp_stanza_new(ctx);
+                xmpp_stanza_set_name(nick_st, STANZA_NAME_NICK);
+                xmpp_stanza_t *nick_text = xmpp_stanza_new(ctx);
+                xmpp_stanza_set_text(nick_text, bookmark->nick);
+                xmpp_stanza_add_child(nick_st, nick_text);
+                xmpp_stanza_add_child(conference, nick_st);
+
+                xmpp_stanza_release(nick_text);
+                xmpp_stanza_release(nick_st);
+            }
+
+            if (bookmark->password != NULL) {
+                xmpp_stanza_t *password_st = xmpp_stanza_new(ctx);
+                xmpp_stanza_set_name(password_st, STANZA_NAME_PASSWORD);
+                xmpp_stanza_t *password_text = xmpp_stanza_new(ctx);
+                xmpp_stanza_set_text(password_text, bookmark->password);
+                xmpp_stanza_add_child(password_st, password_text);
+                xmpp_stanza_add_child(conference, password_st);
+
+                xmpp_stanza_release(password_text);
+                xmpp_stanza_release(password_st);
+            }
+
+            xmpp_stanza_add_child(storage, conference);
+            xmpp_stanza_release(conference);
         }
-
-        if (bookmark->nick != NULL) {
-            xmpp_stanza_t *nick_st = xmpp_stanza_new(ctx);
-            xmpp_stanza_set_name(nick_st, STANZA_NAME_NICK);
-            xmpp_stanza_t *nick_text = xmpp_stanza_new(ctx);
-            xmpp_stanza_set_text(nick_text, bookmark->nick);
-            xmpp_stanza_add_child(nick_st, nick_text);
-            xmpp_stanza_add_child(conference, nick_st);
-
-            xmpp_stanza_release(nick_text);
-            xmpp_stanza_release(nick_st);
-        }
-
-        if (bookmark->password != NULL) {
-            xmpp_stanza_t *password_st = xmpp_stanza_new(ctx);
-            xmpp_stanza_set_name(password_st, STANZA_NAME_PASSWORD);
-            xmpp_stanza_t *password_text = xmpp_stanza_new(ctx);
-            xmpp_stanza_set_text(password_text, bookmark->password);
-            xmpp_stanza_add_child(password_st, password_text);
-            xmpp_stanza_add_child(conference, password_st);
-
-            xmpp_stanza_release(password_text);
-            xmpp_stanza_release(password_st);
-        }
-
-        xmpp_stanza_add_child(storage, conference);
-        xmpp_stanza_release(conference);
 
         curr = curr->next;
     }

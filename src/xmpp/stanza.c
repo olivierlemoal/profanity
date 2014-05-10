@@ -36,37 +36,8 @@
 
 static int _field_compare(FormField *f1, FormField *f2);
 
-#if 0
 xmpp_stanza_t *
-stanza_create_bookmarks_pubsub_request(xmpp_ctx_t *ctx)
-{
-    xmpp_stanza_t *iq, *pubsub, *items;
-
-    /* TODO: check pointers for NULL */
-    iq = xmpp_stanza_new(ctx);
-    pubsub = xmpp_stanza_new(ctx);
-    items = xmpp_stanza_new(ctx);
-
-    xmpp_stanza_set_name(iq, STANZA_NAME_IQ);
-    xmpp_stanza_set_type(iq, STANZA_TYPE_GET);
-
-    xmpp_stanza_set_name(pubsub, STANZA_NAME_PUBSUB);
-    xmpp_stanza_set_ns(pubsub, STANZA_NS_PUBSUB);
-
-    xmpp_stanza_set_name(items, STANZA_NAME_ITEMS);
-    xmpp_stanza_set_attribute(items, "node", "storage:bookmarks");
-
-    xmpp_stanza_add_child(pubsub, items);
-    xmpp_stanza_add_child(iq, pubsub);
-    xmpp_stanza_release(items);
-    xmpp_stanza_release(pubsub);
-
-    return iq;
-}
-#endif
-
-xmpp_stanza_t *
-stanza_create_bookmarks_storage_request(xmpp_ctx_t *ctx)
+stanza_create_bookmarks_private_storage_request(xmpp_ctx_t *ctx)
 {
     xmpp_stanza_t *iq, *query, *storage;
 
@@ -93,7 +64,33 @@ stanza_create_bookmarks_storage_request(xmpp_ctx_t *ctx)
     return iq;
 }
 
-#if 0
+xmpp_stanza_t *
+stanza_create_bookmarks_pubsub_request(xmpp_ctx_t *ctx)
+{
+    xmpp_stanza_t *iq, *pubsub, *items;
+
+    /* TODO: check pointers for NULL */
+    iq = xmpp_stanza_new(ctx);
+    pubsub = xmpp_stanza_new(ctx);
+    items = xmpp_stanza_new(ctx);
+
+    xmpp_stanza_set_name(iq, STANZA_NAME_IQ);
+    xmpp_stanza_set_type(iq, STANZA_TYPE_GET);
+
+    xmpp_stanza_set_name(pubsub, STANZA_NAME_PUBSUB);
+    xmpp_stanza_set_ns(pubsub, STANZA_NS_PUBSUB);
+
+    xmpp_stanza_set_name(items, STANZA_NAME_ITEMS);
+    xmpp_stanza_set_attribute(items, "node", "storage:bookmarks");
+
+    xmpp_stanza_add_child(pubsub, items);
+    xmpp_stanza_add_child(iq, pubsub);
+    xmpp_stanza_release(items);
+    xmpp_stanza_release(pubsub);
+
+    return iq;
+}
+
 xmpp_stanza_t *
 stanza_create_bookmarks_pubsub_add(xmpp_ctx_t *ctx, const char * const jid,
     const gboolean autojoin, const char * const nick)
@@ -184,7 +181,6 @@ stanza_create_bookmarks_pubsub_add(xmpp_ctx_t *ctx, const char * const jid,
 
     return stanza;
 }
-#endif
 
 xmpp_stanza_t *
 stanza_create_chat_state(xmpp_ctx_t *ctx, const char * const recipient,

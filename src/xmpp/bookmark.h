@@ -25,11 +25,17 @@
 
 #include <glib.h>
 
+typedef enum {
+    STORAGE_PRIVATE,
+    STORAGE_PUBSUB
+} storage_t;
+
 struct bookmark_t {
     char *jid;
     char *nick;
     char *password;
     gboolean autojoin;
+    storage_t storage;
 };
 
 typedef struct bookmark_t Bookmark;

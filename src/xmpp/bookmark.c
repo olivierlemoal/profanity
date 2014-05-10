@@ -118,7 +118,12 @@ _bookmark_add(const char *jid, const char *nick, const char *password, const cha
 
         bookmark_list = g_list_append(bookmark_list, item);
         autocomplete_add(bookmark_ac, jid);
-        _send_private_storage_bookmarks_update();
+
+        if (item->storage == STORAGE_PRIVATE) {
+            _send_private_storage_bookmarks_update();
+        } else {
+            // TODO send pubsub bookmarks update
+        }
 
         return TRUE;
     }
@@ -154,7 +159,13 @@ _bookmark_update(const char *jid, const char *nick, const char *password, const 
                 bm->autojoin = FALSE;
             }
         }
-        _send_private_storage_bookmarks_update();
+
+        if (bm->storage == STORAGE_PRIVATE) {
+            _send_private_storage_bookmarks_update();
+        } else {
+            // TODO send pubsub bookmarks update
+        }
+
         return TRUE;
     }
 }
@@ -202,14 +213,20 @@ _bookmark_remove(const char *jid)
 
     GList *found = g_list_find_custom(bookmark_list, item, _match_bookmark_by_jid);
     _bookmark_item_destroy(item);
-    gboolean removed = found != NULL;
+    gboolean remove = found != NULL;
 
-    if (removed) {
+    if (remove) {
+        storage_t storage = ((Bookmark *)found->data)->storage;
         bookmark_list = g_list_remove_link(bookmark_list, found);
         _bookmark_item_destroy(found->data);
         g_list_free(found);
         autocomplete_remove(bookmark_ac, jid);
-        _send_private_storage_bookmarks_update();
+
+        if (storage == STORAGE_PRIVATE) {
+            _send_private_storage_bookmarks_update();
+        } else {
+            // TODO send pubsub bookmarks update
+        }
         return TRUE;
     } else {
         return FALSE;
@@ -421,48 +438,46 @@ _send_private_storage_bookmarks_update(void)
     GList *curr = bookmark_list;
     while (curr != NULL) {
         Bookmark *bookmark = curr->data;
-        if (bookmark->storage == STORAGE_PRIVATE) {
-            xmpp_stanza_t *conference = xmpp_stanza_new(ctx);
-            xmpp_stanza_set_name(conference, STANZA_NAME_CONFERENCE);
-            xmpp_stanza_set_attribute(conference, STANZA_ATTR_JID, bookmark->jid);
+        xmpp_stanza_t *conference = xmpp_stanza_new(ctx);
+        xmpp_stanza_set_name(conference, STANZA_NAME_CONFERENCE);
+        xmpp_stanza_set_attribute(conference, STANZA_ATTR_JID, bookmark->jid);
 
-            Jid *jidp = jid_create(bookmark->jid);
-            xmpp_stanza_set_attribute(conference, STANZA_ATTR_NAME, jidp->localpart);
-            jid_destroy(jidp);
+        Jid *jidp = jid_create(bookmark->jid);
+        xmpp_stanza_set_attribute(conference, STANZA_ATTR_NAME, jidp->localpart);
+        jid_destroy(jidp);
 
-            if (bookmark->autojoin) {
-                xmpp_stanza_set_attribute(conference, STANZA_ATTR_AUTOJOIN, "true");
-            } else {
-                xmpp_stanza_set_attribute(conference, STANZA_ATTR_AUTOJOIN, "false");
-            }
-
-            if (bookmark->nick != NULL) {
-                xmpp_stanza_t *nick_st = xmpp_stanza_new(ctx);
-                xmpp_stanza_set_name(nick_st, STANZA_NAME_NICK);
-                xmpp_stanza_t *nick_text = xmpp_stanza_new(ctx);
-                xmpp_stanza_set_text(nick_text, bookmark->nick);
-                xmpp_stanza_add_child(nick_st, nick_text);
-                xmpp_stanza_add_child(conference, nick_st);
-
-                xmpp_stanza_release(nick_text);
-                xmpp_stanza_release(nick_st);
-            }
-
-            if (bookmark->password != NULL) {
-                xmpp_stanza_t *password_st = xmpp_stanza_new(ctx);
-                xmpp_stanza_set_name(password_st, STANZA_NAME_PASSWORD);
-                xmpp_stanza_t *password_text = xmpp_stanza_new(ctx);
-                xmpp_stanza_set_text(password_text, bookmark->password);
-                xmpp_stanza_add_child(password_st, password_text);
-                xmpp_stanza_add_child(conference, password_st);
-
-                xmpp_stanza_release(password_text);
-                xmpp_stanza_release(password_st);
-            }
-
-            xmpp_stanza_add_child(storage, conference);
-            xmpp_stanza_release(conference);
+        if (bookmark->autojoin) {
+            xmpp_stanza_set_attribute(conference, STANZA_ATTR_AUTOJOIN, "true");
+        } else {
+            xmpp_stanza_set_attribute(conference, STANZA_ATTR_AUTOJOIN, "false");
         }
+
+        if (bookmark->nick != NULL) {
+            xmpp_stanza_t *nick_st = xmpp_stanza_new(ctx);
+            xmpp_stanza_set_name(nick_st, STANZA_NAME_NICK);
+            xmpp_stanza_t *nick_text = xmpp_stanza_new(ctx);
+            xmpp_stanza_set_text(nick_text, bookmark->nick);
+            xmpp_stanza_add_child(nick_st, nick_text);
+            xmpp_stanza_add_child(conference, nick_st);
+
+            xmpp_stanza_release(nick_text);
+            xmpp_stanza_release(nick_st);
+        }
+
+        if (bookmark->password != NULL) {
+            xmpp_stanza_t *password_st = xmpp_stanza_new(ctx);
+            xmpp_stanza_set_name(password_st, STANZA_NAME_PASSWORD);
+            xmpp_stanza_t *password_text = xmpp_stanza_new(ctx);
+            xmpp_stanza_set_text(password_text, bookmark->password);
+            xmpp_stanza_add_child(password_st, password_text);
+            xmpp_stanza_add_child(conference, password_st);
+
+            xmpp_stanza_release(password_text);
+            xmpp_stanza_release(password_st);
+        }
+
+        xmpp_stanza_add_child(storage, conference);
+        xmpp_stanza_release(conference);
 
         curr = curr->next;
     }

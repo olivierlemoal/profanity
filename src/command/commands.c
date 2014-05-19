@@ -20,11 +20,15 @@
  *
  */
 
+#include "config.h"
+
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <glib.h>
+#ifdef HAVE_LIBOTR
 #include <libotr/proto.h>
+#endif
 
 #include "chat_session.h"
 #include "command/commands.h"
@@ -39,7 +43,9 @@
 #include "jid.h"
 #include "log.h"
 #include "muc.h"
+#ifdef HAVE_LIBOTR
 #include "otr/otr.h"
+#endif
 #include "profanity.h"
 #include "tools/autocomplete.h"
 #include "tools/parser.h"

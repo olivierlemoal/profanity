@@ -1382,53 +1382,33 @@ cmd_info(gchar **args, struct cmd_help_t help)
     jabber_conn_status_t conn_status = jabber_get_connection_status();
     win_type_t win_type = ui_current_win_type();
     PContact pcontact = NULL;
-    char *recipient;
 
     if (conn_status != JABBER_CONNECTED) {
         cons_show("You are not currently connected.");
         return TRUE;
     }
 
-    recipient = ui_current_recipient();
-
     switch (win_type)
     {
         case WIN_MUC:
             if (usr != NULL) {
-                pcontact = muc_get_participant(recipient, usr);
-                if (pcontact != NULL) {
-                    cons_show_info(pcontact);
-                } else {
-                    cons_show("No such participant \"%s\" in room.", usr);
-                }
+                ui_info_room(usr);
             } else {
-                cons_show("No nickname supplied to /info in chat room.");
+                ui_current_print_line("You must specify a nickname.");
             }
             break;
         case WIN_CHAT:
             if (usr != NULL) {
-                cons_show("No parameter required for /info in chat.");
+                ui_current_print_line("No parameter required when in chat.");
             } else {
-                pcontact = roster_get_contact(recipient);
-                if (pcontact != NULL) {
-                    cons_show_info(pcontact);
-                } else {
-                    cons_show("No such contact \"%s\" in roster.", recipient);
-                }
+                ui_info();
             }
             break;
         case WIN_PRIVATE:
             if (usr != NULL) {
                 ui_current_print_line("No parameter required when in chat.");
             } else {
-                Jid *jid = jid_create(recipient);
-                pcontact = muc_get_participant(jid->barejid, jid->resourcepart);
-                if (pcontact != NULL) {
-                    cons_show_info(pcontact);
-                } else {
-                    cons_show("No such participant \"%s\" in room.", jid->resourcepart);
-                }
-                jid_destroy(jid);
+                ui_info_private();
             }
             break;
         case WIN_CONSOLE:

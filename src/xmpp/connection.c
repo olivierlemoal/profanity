@@ -117,7 +117,13 @@ _jabber_connect_with_account(const ProfAccount * const account)
     log_info("Connecting using account: %s", account->name);
 
     // save account name and password for reconnect
+    if (saved_account.name != NULL) {
+        free(saved_account.name);
+    }
     saved_account.name = strdup(account->name);
+    if (saved_account.passwd != NULL) {
+        free(saved_account.passwd);
+    }
     saved_account.passwd = strdup(account->password);
 
     // connect with fulljid
@@ -199,7 +205,11 @@ _jabber_disconnect(void)
 static void
 _jabber_shutdown(void)
 {
+    _connection_free_saved_account();
+    _connection_free_saved_details();
+    _connection_free_session_data();
     xmpp_shutdown();
+    free(jabber_conn.log);
 }
 
 static void
@@ -349,6 +359,9 @@ _jabber_connect(const char * const fulljid, const char * const passwd,
     jid_destroy(jid);
 
     log_info("Connecting as %s", fulljid);
+    if (jabber_conn.log != NULL) {
+        free(jabber_conn.log);
+    }
     jabber_conn.log = _xmpp_get_file_logger();
 
     if (jabber_conn.conn != NULL) {

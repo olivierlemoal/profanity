@@ -459,8 +459,9 @@ _send_private_storage_bookmarks_update(void)
 
     xmpp_stanza_t *iq = xmpp_stanza_new(ctx);
     xmpp_stanza_set_name(iq, STANZA_NAME_IQ);
-    char *id = generate_unique_id("bookmark_private_storage_update");
+    char *id = create_unique_id("bookmark_private_storage_update");
     xmpp_stanza_set_id(iq, id);
+    free(id);
     xmpp_stanza_set_type(iq, STANZA_TYPE_SET);
 
     xmpp_stanza_t *query = xmpp_stanza_new(ctx);
@@ -537,7 +538,7 @@ _send_pubsub_bookmarks_update(void)
 
     xmpp_stanza_t *iq = xmpp_stanza_new(ctx);
     xmpp_stanza_set_name(iq, STANZA_NAME_IQ);
-    char *id = generate_unique_id("bookmark_private_storage_update");
+    char *id = create_unique_id("bookmark_private_storage_update");
     xmpp_stanza_set_id(iq, id);
     xmpp_stanza_set_type(iq, STANZA_TYPE_SET);
 

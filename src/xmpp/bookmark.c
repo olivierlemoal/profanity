@@ -254,7 +254,7 @@ _bookmark_get_list(void)
 static char *
 _bookmark_find(char *search_str)
 {
-    return autocomplete_complete(bookmark_ac, search_str);
+    return autocomplete_complete(bookmark_ac, search_str, TRUE);
 }
 
 static void

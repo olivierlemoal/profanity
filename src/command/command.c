@@ -86,6 +86,7 @@ static char * _statuses_autocomplete(char *input, int *size);
 static char * _alias_autocomplete(char *input, int *size);
 static char * _join_autocomplete(char *input, int *size);
 static char * _log_autocomplete(char *input, int *size);
+static char * _room_autocomplete(char *input, int *size);
 
 GHashTable *commands = NULL;
 
@@ -301,6 +302,14 @@ static struct cmd_t command_defs[] =
         { "/decline room",
           "-------------",
           "Decline invitation to a chat room, the room will no longer be in the list of outstanding invites.",
+          NULL } } },
+
+    { "/room",
+        cmd_room, parse_args, 2, 2, NULL,
+        { "/room config accept|cancel", "Room configuration.",
+        { "/room config accept|cncel",
+          "-------------------------",
+          "Accept or cancel default room configuration.",
           NULL } } },
 
     { "/rooms",
@@ -713,12 +722,21 @@ static struct cmd_t command_defs[] =
           "A value of 0 will switch off autopinging the server.",
           NULL } } },
 
+    { "/ping",
+        cmd_ping, parse_args, 0, 1, NULL,
+        { "/ping [target]", "Send ping IQ request.",
+        { "/ping [rarget]",
+          "--------------",
+          "Sends an IQ ping stanza to the specificed target.",
+          "If no target is supplied, your chat server will be used.",
+          NULL } } },
+
     { "/autoaway",
         cmd_autoaway, parse_args_with_freetext, 2, 2, &cons_autoaway_setting,
         { "/autoaway setting value", "Set auto idle/away properties.",
         { "/autoaway setting value",
           "-----------------------",
-          "'setting' may be one of 'mode', 'minutes', 'message' or 'check', with the following values:",
+          "'setting' may be one of 'mode', 'time', 'message' or 'check', with the following values:",
           "",
           "mode    : idle - Sends idle time, whilst your status remains online.",
           "          away - Sends an away presence.",
@@ -934,6 +952,8 @@ static Autocomplete statuses_setting_ac;
 static Autocomplete alias_ac;
 static Autocomplete aliases_ac;
 static Autocomplete join_property_ac;
+static Autocomplete room_ac;
+static Autocomplete room_config_ac;
 
 /*
  * Initialise command autocompleter and history
@@ -1185,6 +1205,13 @@ cmd_init(void)
     autocomplete_add(alias_ac, "remove");
     autocomplete_add(alias_ac, "list");
 
+    room_ac = autocomplete_new();
+    autocomplete_add(room_ac, "config");
+
+    room_config_ac = autocomplete_new();
+    autocomplete_add(room_config_ac, "accept");
+    autocomplete_add(room_config_ac, "cancel");
+
     cmd_history_init();
 }
 
@@ -1228,6 +1255,8 @@ cmd_uninit(void)
     autocomplete_free(alias_ac);
     autocomplete_free(aliases_ac);
     autocomplete_free(join_property_ac);
+    autocomplete_free(room_ac);
+    autocomplete_free(room_config_ac);
 }
 
 gboolean
@@ -1351,6 +1380,8 @@ cmd_reset_autocomplete()
     autocomplete_reset(alias_ac);
     autocomplete_reset(aliases_ac);
     autocomplete_reset(join_property_ac);
+    autocomplete_reset(room_ac);
+    autocomplete_reset(room_config_ac);
     bookmark_autocomplete_reset();
 }
 
@@ -1570,7 +1601,7 @@ _cmd_complete_parameters(char *input, int *size)
             }
         }
 
-        gchar *resource_choices[] = { "/caps", "/software" };
+        gchar *resource_choices[] = { "/caps", "/software", "/ping" };
         for (i = 0; i < ARRAY_SIZE(resource_choices); i++) {
             result = autocomplete_param_with_func(input, size, resource_choices[i],
                 roster_find_resource);
@@ -1629,6 +1660,7 @@ _cmd_complete_parameters(char *input, int *size)
     g_hash_table_insert(ac_funcs, "/statuses",      _statuses_autocomplete);
     g_hash_table_insert(ac_funcs, "/alias",         _alias_autocomplete);
     g_hash_table_insert(ac_funcs, "/join",          _join_autocomplete);
+    g_hash_table_insert(ac_funcs, "/room",          _room_autocomplete);
 
     char parsed[*size+1];
     i = 0;
@@ -2031,6 +2063,24 @@ _theme_autocomplete(char *input, int *size)
         }
     }
     result = autocomplete_param_with_ac(input, size, "/theme", theme_ac, TRUE);
+    if (result != NULL) {
+        return result;
+    }
+
+    return NULL;
+}
+
+static char *
+_room_autocomplete(char *input, int *size)
+{
+    char *result = NULL;
+
+    result = autocomplete_param_with_ac(input, size, "/room config", room_config_ac, TRUE);
+    if (result != NULL) {
+        return result;
+    }
+
+    result = autocomplete_param_with_ac(input, size, "/room", room_ac, TRUE);
     if (result != NULL) {
         return result;
     }

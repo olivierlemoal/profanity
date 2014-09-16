@@ -65,6 +65,7 @@
 #include "xmpp/xmpp.h"
 #include "xmpp/bookmark.h"
 #include "ui/ui.h"
+#include "ui/windows.h"
 
 static void _update_presence(const resource_presence_t presence,
     const char * const show, gchar **args);
@@ -478,7 +479,6 @@ cmd_disconnect(gchar **args, struct cmd_help_t help)
         muc_clear_invites();
         chat_sessions_clear();
         ui_disconnected();
-        ui_current_page_off();
         free(jid);
     } else {
         cons_show("You are not currently connected.");
@@ -1233,7 +1233,6 @@ cmd_group(gchar **args, struct cmd_help_t help)
         if (p_contact_in_group(pcontact, group)) {
             const char *display_name = p_contact_name_or_jid(pcontact);
             ui_contact_already_in_group(display_name, group);
-            ui_current_page_off();
         } else {
             roster_send_add_to_group(group, pcontact);
         }
@@ -1265,7 +1264,6 @@ cmd_group(gchar **args, struct cmd_help_t help)
         if (!p_contact_in_group(pcontact, group)) {
             const char *display_name = p_contact_name_or_jid(pcontact);
             ui_contact_not_in_group(display_name, group);
-            ui_current_page_off();
         } else {
             roster_send_remove_from_group(group, pcontact);
         }
@@ -1784,6 +1782,62 @@ cmd_decline(gchar **args, struct cmd_help_t help)
     } else {
         muc_remove_invite(args[0]);
         cons_show("Declined invite to %s.", args[0]);
+    }
+
+    return TRUE;
+}
+
+gboolean
+cmd_room(gchar **args, struct cmd_help_t help)
+{
+    jabber_conn_status_t conn_status = jabber_get_connection_status();
+
+    if (conn_status != JABBER_CONNECTED) {
+        cons_show("You are not currently connected.");
+        return TRUE;
+    }
+
+    win_type_t win_type = ui_current_win_type();
+    if (win_type != WIN_MUC) {
+        cons_show("Command /room only usable in chat rooms.");
+        return TRUE;
+    }
+
+    if (g_strcmp0(args[0], "config") != 0) {
+        cons_show("Usage: %s", help.usage);
+        return TRUE;
+    }
+
+    if ((g_strcmp0(args[1], "accept") != 0) &&
+            (g_strcmp0(args[1], "cancel") != 0)) {
+        cons_show("Usage: %s", help.usage);
+        return TRUE;
+    }
+
+    char *room = ui_current_recipient();
+    ProfWin *window = wins_get_by_recipient(room);
+    int num = wins_get_num(window);
+    int ui_index = num;
+    if (ui_index == 10) {
+        ui_index = 0;
+    }
+    gboolean requires_config = muc_requires_config(room);
+    if (!requires_config) {
+        win_save_vprint(window, '!', NULL, 0, COLOUR_ROOMINFO, "", "Current room does not require configuration.");
+        return TRUE;
+    }
+
+    if (g_strcmp0(args[1], "accept") == 0) {
+        iq_confirm_instant_room(room);
+        muc_set_requires_config(room, FALSE);
+        win_save_vprint(window, '!', NULL, 0, COLOUR_ROOMINFO, "", "Room unlocked.");
+        cons_show("Room unlocked: %s (%d)", room, ui_index);
+        return TRUE;
+    }
+
+    if (g_strcmp0(args[1], "cancel") == 0) {
+        iq_destroy_instant_room(room);
+        return TRUE;
     }
 
     return TRUE;
@@ -2523,6 +2577,26 @@ cmd_autoping(gchar **args, struct cmd_help_t help)
 }
 
 gboolean
+cmd_ping(gchar **args, struct cmd_help_t help)
+{
+    jabber_conn_status_t conn_status = jabber_get_connection_status();
+
+    if (conn_status != JABBER_CONNECTED) {
+        cons_show("You are not currenlty connected.");
+        return TRUE;
+    }
+
+    iq_send_ping(args[0]);
+
+    if (args[0] == NULL) {
+        cons_show("Pinged server...");
+    } else {
+        cons_show("Pinged %s...", args[0]);
+    }
+    return TRUE;
+}
+
+gboolean
 cmd_autoaway(gchar **args, struct cmd_help_t help)
 {
     char *setting = args[0];
@@ -2827,7 +2901,6 @@ cmd_otr(gchar **args, struct cmd_help_t help)
     } else if (strcmp(args[0], "warn") == 0) {
         gboolean result =  _cmd_set_boolean_preference(args[1], help,
             "OTR warning message", PREF_OTR_WARN);
-        ui_current_update_virtual();
         return result;
 
     } else if (strcmp(args[0], "libver") == 0) {

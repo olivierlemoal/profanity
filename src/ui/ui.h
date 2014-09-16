@@ -60,7 +60,7 @@ void notifier_init_module(void);
 // ui startup and control
 void (*ui_init)(void);
 void (*ui_load_colours)(void);
-void (*ui_update_screen)(void);
+void (*ui_update)(void);
 void (*ui_close)(void);
 void (*ui_resize)(const int ch, const char * const input,
     const int size);
@@ -106,8 +106,6 @@ char* (*ui_current_recipient)(void);
 void (*ui_current_print_line)(const char * const msg, ...);
 void (*ui_current_print_formatted_line)(const char show_char, int attrs, const char * const msg, ...);
 void (*ui_current_error_line)(const char * const msg);
-void (*ui_current_page_off)(void);
-void (*ui_current_update_virtual)(void);
 
 void (*ui_otr_authenticating)(const char * const recipient);
 void (*ui_otr_authetication_waiting)(const char * const recipient);
@@ -137,6 +135,8 @@ void (*ui_room_message)(const char * const room_jid, const char * const nick,
     const char * const message);
 void (*ui_room_subject)(const char * const room_jid,
     const char * const subject);
+void (*ui_room_requires_config)(const char * const room_jid);
+void (*ui_room_destroyed)(const char * const room_jid);
 void (*ui_room_broadcast)(const char * const room_jid,
     const char * const message);
 void (*ui_room_member_offline)(const char * const room, const char * const nick);

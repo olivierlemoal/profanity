@@ -362,6 +362,14 @@ cmd_account(gchar **args, struct cmd_help_t help)
                     accounts_clear_password(account_name);
                     cons_show("Removed password for account %s", account_name);
                     cons_show("");
+                } else if (strcmp(property, "server") == 0) {
+                    accounts_clear_server(account_name);
+                    cons_show("Removed server for account %s", account_name);
+                    cons_show("");
+                } else if (strcmp(property, "port") == 0) {
+                    accounts_clear_port(account_name);
+                    cons_show("Removed port for account %s", account_name);
+                    cons_show("");
                 } else if (strcmp(property, "otr") == 0) {
                     accounts_clear_otr(account_name);
                     cons_show("OTR policy removed for account %s", account_name);
@@ -582,7 +590,7 @@ cmd_help(gchar **args, struct cmd_help_t help)
         _cmd_show_filtered_help("Basic commands", filter, ARRAY_SIZE(filter));
 
     } else if (strcmp(args[0], "chatting") == 0) {
-        gchar *filter[] = { "/chlog", "/otr", "/duck", "/gone", "/history",
+        gchar *filter[] = { "/chlog", "/otr", "/gone", "/history",
             "/info", "/intype", "/msg", "/notify", "/outtype", "/status",
             "/close", "/clear", "/tiny" };
         _cmd_show_filtered_help("Chat commands", filter, ARRAY_SIZE(filter));
@@ -590,7 +598,7 @@ cmd_help(gchar **args, struct cmd_help_t help)
     } else if (strcmp(args[0], "groupchat") == 0) {
         gchar *filter[] = { "/close", "/clear", "/decline", "/grlog",
             "/invite", "/invites", "/join", "/leave", "/notify", "/msg",
-            "/rooms", "/tiny", "/who", "/nick" };
+            "/rooms", "/tiny", "/who", "/nick", "/privileges" };
         _cmd_show_filtered_help("Groupchat commands", filter, ARRAY_SIZE(filter));
 
     } else if (strcmp(args[0], "presence") == 0) {
@@ -612,12 +620,8 @@ cmd_help(gchar **args, struct cmd_help_t help)
             "/chlog", "/flash", "/gone", "/grlog", "/history", "/intype",
             "/log", "/mouse", "/notify", "/outtype", "/prefs", "/priority",
             "/reconnect", "/roster", "/splash", "/states", "/statuses", "/theme",
-            "/titlebar", "/vercheck" };
+            "/titlebar", "/vercheck", "/privileges" };
         _cmd_show_filtered_help("Settings commands", filter, ARRAY_SIZE(filter));
-
-    } else if (strcmp(args[0], "other") == 0) {
-        gchar *filter[] = { "/duck", "/vercheck" };
-        _cmd_show_filtered_help("Other commands", filter, ARRAY_SIZE(filter));
 
     } else if (strcmp(args[0], "navigation") == 0) {
         cons_navigation_help();
@@ -1405,40 +1409,6 @@ cmd_roster(gchar **args, struct cmd_help_t help)
 }
 
 gboolean
-cmd_duck(gchar **args, struct cmd_help_t help)
-{
-    char *query = args[0];
-
-    jabber_conn_status_t conn_status = jabber_get_connection_status();
-
-    if (conn_status != JABBER_CONNECTED) {
-        cons_show("You are not currently connected.");
-        return TRUE;
-    }
-
-    // if no duck win open, create it and send a help command
-    if (!ui_duck_exists()) {
-        ui_create_duck_win();
-
-        if (query != NULL) {
-            message_send_duck(query);
-            ui_duck(query);
-        }
-
-    // window exists, send query
-    } else {
-        ui_open_duck_win();
-
-        if (query != NULL) {
-            message_send_duck(query);
-            ui_duck(query);
-        }
-    }
-
-    return TRUE;
-}
-
-gboolean
 cmd_status(gchar **args, struct cmd_help_t help)
 {
     char *usr = args[0];
@@ -1501,6 +1471,7 @@ cmd_info(gchar **args, struct cmd_help_t help)
     win_type_t win_type = ui_current_win_type();
     PContact pcontact = NULL;
     Occupant *occupant = NULL;
+    char *room = NULL;
 
     if (conn_status != JABBER_CONNECTED) {
         cons_show("You are not currently connected.");
@@ -1510,6 +1481,7 @@ cmd_info(gchar **args, struct cmd_help_t help)
     switch (win_type)
     {
         case WIN_MUC:
+            room = ui_current_recipient();
             if (usr) {
                 char *room = ui_current_recipient();
                 occupant = muc_roster_item(room, usr);
@@ -1519,7 +1491,10 @@ cmd_info(gchar **args, struct cmd_help_t help)
                     ui_current_print_line("No such occupant \"%s\" in room.", usr);
                 }
             } else {
-                ui_current_print_line("You must specify a nickname.");
+                ProfWin *window = wins_get_by_recipient(room);
+                iq_room_info_request(room);
+                ui_show_room_info(window, room);
+                return TRUE;
             }
             break;
         case WIN_CHAT:
@@ -1761,7 +1736,7 @@ cmd_join(gchar **args, struct cmd_help_t help)
         presence_join_room(room, nick, passwd);
         muc_join(room, nick, passwd, FALSE);
     } else if (muc_roster_complete(room)) {
-        ui_room_join(room, TRUE);
+        ui_switch_to_room(room);
     }
 
     jid_destroy(room_arg);
@@ -1829,6 +1804,220 @@ cmd_decline(gchar **args, struct cmd_help_t help)
 }
 
 gboolean
+cmd_form_field(char *tag, gchar **args)
+{
+    ProfWin *current = wins_get_current();
+    DataForm *form = current->form;
+    if (form) {
+        if (!form_tag_exists(form, tag)) {
+            ui_current_print_line("Form does not contain a field with tag %s", tag);
+            return TRUE;
+        }
+
+        form_field_type_t field_type = form_get_field_type(form, tag);
+        char *cmd = NULL;
+        char *value = NULL;
+        gboolean valid = FALSE;
+        gboolean added = FALSE;
+        gboolean removed = FALSE;
+
+        switch (field_type) {
+        case FIELD_BOOLEAN:
+            value = args[0];
+            if (g_strcmp0(value, "on") == 0) {
+                form_set_value(form, tag, "1");
+                ui_current_print_line("Field updated...");
+                ui_show_form_field(current, form, tag);
+            } else if (g_strcmp0(value, "off") == 0) {
+                form_set_value(form, tag, "0");
+                ui_current_print_line("Field updated...");
+                ui_show_form_field(current, form, tag);
+            } else {
+                ui_current_print_line("Invalid command, usage:");
+                ui_show_form_field_help(current, form, tag);
+                ui_current_print_line("");
+            }
+            break;
+
+        case FIELD_TEXT_PRIVATE:
+        case FIELD_TEXT_SINGLE:
+        case FIELD_JID_SINGLE:
+            value = args[0];
+            if (value == NULL) {
+                ui_current_print_line("Invalid command, usage:");
+                ui_show_form_field_help(current, form, tag);
+                ui_current_print_line("");
+            } else {
+                form_set_value(form, tag, value);
+                ui_current_print_line("Field updated...");
+                ui_show_form_field(current, form, tag);
+            }
+            break;
+        case FIELD_LIST_SINGLE:
+            value = args[0];
+            if ((value == NULL) || !form_field_contains_option(form, tag, value)) {
+                ui_current_print_line("Invalid command, usage:");
+                ui_show_form_field_help(current, form, tag);
+                ui_current_print_line("");
+            } else {
+                form_set_value(form, tag, value);
+                ui_current_print_line("Field updated...");
+                ui_show_form_field(current, form, tag);
+            }
+            break;
+
+        case FIELD_TEXT_MULTI:
+            cmd = args[0];
+            if (cmd) {
+                value = args[1];
+            }
+            if ((g_strcmp0(cmd, "add") != 0) && (g_strcmp0(cmd, "remove"))) {
+                ui_current_print_line("Invalid command, usage:");
+                ui_show_form_field_help(current, form, tag);
+                ui_current_print_line("");
+                break;
+            }
+            if (value == NULL) {
+                ui_current_print_line("Invalid command, usage:");
+                ui_show_form_field_help(current, form, tag);
+                ui_current_print_line("");
+                break;
+            }
+            if (g_strcmp0(cmd, "add") == 0) {
+                form_add_value(form, tag, value);
+                ui_current_print_line("Field updated...");
+                ui_show_form_field(current, form, tag);
+                break;
+            }
+            if (g_strcmp0(args[0], "remove") == 0) {
+                if (!g_str_has_prefix(value, "val")) {
+                    ui_current_print_line("Invalid command, usage:");
+                    ui_show_form_field_help(current, form, tag);
+                    ui_current_print_line("");
+                    break;
+                }
+                if (strlen(value) < 4) {
+                    ui_current_print_line("Invalid command, usage:");
+                    ui_show_form_field_help(current, form, tag);
+                    ui_current_print_line("");
+                    break;
+                }
+
+                int index = strtol(&value[3], NULL, 10);
+                if ((index < 1) || (index > form_get_value_count(form, tag))) {
+                    ui_current_print_line("Invalid command, usage:");
+                    ui_show_form_field_help(current, form, tag);
+                    ui_current_print_line("");
+                    break;
+                }
+
+                removed = form_remove_text_multi_value(form, tag, index);
+                if (removed) {
+                    ui_current_print_line("Field updated...");
+                    ui_show_form_field(current, form, tag);
+                } else {
+                    ui_current_print_line("Could not remove %s from %s", value, tag);
+                }
+            }
+            break;
+        case FIELD_LIST_MULTI:
+            cmd = args[0];
+            if (cmd) {
+                value = args[1];
+            }
+            if ((g_strcmp0(cmd, "add") != 0) && (g_strcmp0(cmd, "remove"))) {
+                ui_current_print_line("Invalid command, usage:");
+                ui_show_form_field_help(current, form, tag);
+                ui_current_print_line("");
+                break;
+            }
+            if (value == NULL) {
+                ui_current_print_line("Invalid command, usage:");
+                ui_show_form_field_help(current, form, tag);
+                ui_current_print_line("");
+                break;
+            }
+            if (g_strcmp0(args[0], "add") == 0) {
+                valid = form_field_contains_option(form, tag, value);
+                if (valid) {
+                    added = form_add_unique_value(form, tag, value);
+                    if (added) {
+                        ui_current_print_line("Field updated...");
+                        ui_show_form_field(current, form, tag);
+                    } else {
+                        ui_current_print_line("Value %s already selected for %s", value, tag);
+                    }
+                } else {
+                    ui_current_print_line("Invalid command, usage:");
+                    ui_show_form_field_help(current, form, tag);
+                    ui_current_print_line("");
+                }
+                break;
+            }
+            if (g_strcmp0(args[0], "remove") == 0) {
+                valid = form_field_contains_option(form, tag, value);
+                if (valid == TRUE) {
+                    removed = form_remove_value(form, tag, value);
+                    if (removed) {
+                        ui_current_print_line("Field updated...");
+                        ui_show_form_field(current, form, tag);
+                    } else {
+                        ui_current_print_line("Value %s is not currently set for %s", value, tag);
+                    }
+                } else {
+                    ui_current_print_line("Invalid command, usage:");
+                    ui_show_form_field_help(current, form, tag);
+                    ui_current_print_line("");
+                }
+            }
+            break;
+        case FIELD_JID_MULTI:
+            cmd = args[0];
+            if (cmd) {
+                value = args[1];
+            }
+            if ((g_strcmp0(cmd, "add") != 0) && (g_strcmp0(cmd, "remove"))) {
+                ui_current_print_line("Invalid command, usage:");
+                ui_show_form_field_help(current, form, tag);
+                ui_current_print_line("");
+                break;
+            }
+            if (value == NULL) {
+                ui_current_print_line("Invalid command, usage:");
+                ui_show_form_field_help(current, form, tag);
+                ui_current_print_line("");
+                break;
+            }
+            if (g_strcmp0(args[0], "add") == 0) {
+                added = form_add_unique_value(form, tag, value);
+                if (added) {
+                    ui_current_print_line("Field updated...");
+                    ui_show_form_field(current, form, tag);
+                } else {
+                    ui_current_print_line("JID %s already exists in %s", value, tag);
+                }
+                break;
+            }
+            if (g_strcmp0(args[0], "remove") == 0) {
+                removed = form_remove_value(current->form, tag, value);
+                if (removed) {
+                    ui_current_print_line("Field updated...");
+                    ui_show_form_field(current, current->form, tag);
+                } else {
+                    ui_current_print_line("Field %s does not contain %s", tag, value);
+                }
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    return TRUE;
+}
+
+gboolean
 cmd_form(gchar **args, struct cmd_help_t help)
 {
     jabber_conn_status_t conn_status = jabber_get_connection_status();
@@ -1847,10 +2036,7 @@ cmd_form(gchar **args, struct cmd_help_t help)
     if ((g_strcmp0(args[0], "submit") != 0) &&
             (g_strcmp0(args[0], "cancel") != 0) &&
             (g_strcmp0(args[0], "show") != 0) &&
-            (g_strcmp0(args[0], "help") != 0) &&
-            (g_strcmp0(args[0], "set") != 0) &&
-            (g_strcmp0(args[0], "add") != 0) &&
-            (g_strcmp0(args[0], "remove") != 0)) {
+            (g_strcmp0(args[0], "help") != 0)) {
         cons_show("Usage: %s", help.usage);
         return TRUE;
     }
@@ -1894,205 +2080,12 @@ cmd_form(gchar **args, struct cmd_help_t help)
     if (g_strcmp0(args[0], "cancel") == 0) {
         iq_room_config_cancel(room);
     }
-    if (g_strcmp0(args[0], "set") == 0) {
-        char *tag = NULL;
-        char *value = NULL;
-        if (args[1] != NULL) {
-            tag = args[1];
-        } else {
-            ui_current_print_line("/room set command requires a field tag and value");
-            g_strfreev(split_recipient);
-            return TRUE;
-        }
-        if (args[2] != NULL) {
-            value = args[2];
-        } else {
-            ui_current_print_line("/room set command requires a field tag and value");
-            g_strfreev(split_recipient);
-            return TRUE;
-        }
-        if (!form_tag_exists(current->form, tag)) {
-            ui_current_print_line("Form does not contain a field with tag %s", tag);
-        } else {
-            form_field_type_t field_type = form_get_field_type(current->form, tag);
-            gboolean valid = FALSE;
-            switch (field_type) {
-            case FIELD_TEXT_SINGLE:
-            case FIELD_TEXT_PRIVATE:
-            case FIELD_JID_SINGLE:
-                form_set_value(current->form, tag, value);
-                ui_current_print_line("Field updated...");
-                ui_show_form_field(current, current->form, tag);
-                break;
-            case FIELD_BOOLEAN:
-                if (g_strcmp0(value, "on") == 0) {
-                    form_set_value(current->form, tag, "1");
-                    ui_current_print_line("Field updated...");
-                    ui_show_form_field(current, current->form, tag);
-                } else if (g_strcmp0(value, "off") == 0) {
-                    form_set_value(current->form, tag, "0");
-                    ui_current_print_line("Field updated...");
-                    ui_show_form_field(current, current->form, tag);
-                } else {
-                    ui_current_print_line("Value %s not valid for boolean field: %s", value, tag);
-                }
-                break;
-            case FIELD_LIST_SINGLE:
-                valid = form_field_contains_option(current->form, tag, value);
-                if (valid == TRUE) {
-                    form_set_value(current->form, tag, value);
-                    ui_current_print_line("Field updated...");
-                    ui_show_form_field(current, current->form, tag);
-                } else {
-                    ui_current_print_line("Value %s not a valid option for field: %s", value, tag);
-                }
-                break;
-            default:
-                ui_current_print_line("Set command not valid for field: %s", tag);
-                break;
-            }
-        }
-    }
-
-    if (g_strcmp0(args[0], "add") == 0) {
-        char *tag = NULL;
-        char *value = NULL;
-        if (args[1] != NULL) {
-            tag = args[1];
-        } else {
-            ui_current_print_line("/room add command requires a field tag and value");
-            g_strfreev(split_recipient);
-            return TRUE;
-        }
-        if (args[2] != NULL) {
-            value = args[2];
-        } else {
-            ui_current_print_line("/room add command requires a field tag and value");
-            g_strfreev(split_recipient);
-            return TRUE;
-        }
-        if (!form_tag_exists(current->form, tag)) {
-            ui_current_print_line("Form does not contain a field with tag %s", tag);
-        } else {
-            form_field_type_t field_type = form_get_field_type(current->form, tag);
-            gboolean valid = FALSE;
-            gboolean added = FALSE;
-            switch (field_type) {
-            case FIELD_LIST_MULTI:
-                valid = form_field_contains_option(current->form, tag, value);
-                if (valid) {
-                    added = form_add_unique_value(current->form, tag, value);
-                    if (added) {
-                        ui_current_print_line("Field updated...");
-                        ui_show_form_field(current, current->form, tag);
-                    } else {
-                        ui_current_print_line("Value %s already selected for %s", value, tag);
-                    }
-                } else {
-                    ui_current_print_line("Value %s not a valid option for field: %s", value, tag);
-                }
-                break;
-            case FIELD_TEXT_MULTI:
-                form_add_value(current->form, tag, value);
-                ui_current_print_line("Field updated...");
-                ui_show_form_field(current, current->form, tag);
-                break;
-            case FIELD_JID_MULTI:
-                added = form_add_unique_value(current->form, tag, value);
-                if (added) {
-                    ui_current_print_line("Field updated...");
-                    ui_show_form_field(current, current->form, tag);
-                } else {
-                    ui_current_print_line("JID %s already exists in %s", value, tag);
-                }
-                break;
-            default:
-                ui_current_print_line("Add command not valid for field: %s", tag);
-                break;
-            }
-        }
-    }
-
-    if (g_strcmp0(args[0], "remove") == 0) {
-        char *tag = NULL;
-        char *value = NULL;
-        if (args[1] != NULL) {
-            tag = args[1];
-        } else {
-            ui_current_print_line("/room remove command requires a field tag and value");
-            g_strfreev(split_recipient);
-            return TRUE;
-        }
-        if (args[2] != NULL) {
-            value = args[2];
-        } else {
-            ui_current_print_line("/room remove command requires a field tag and value");
-            g_strfreev(split_recipient);
-            return TRUE;
-        }
-        if (!form_tag_exists(current->form, tag)) {
-            ui_current_print_line("Form does not contain a field with tag %s", tag);
-        } else {
-            form_field_type_t field_type = form_get_field_type(current->form, tag);
-            gboolean valid = FALSE;
-            gboolean removed = FALSE;
-            switch (field_type) {
-            case FIELD_LIST_MULTI:
-                valid = form_field_contains_option(current->form, tag, value);
-                if (valid == TRUE) {
-                    removed = form_remove_value(current->form, tag, value);
-                    if (removed) {
-                        ui_current_print_line("Field updated...");
-                        ui_show_form_field(current, current->form, tag);
-                    } else {
-                        ui_current_print_line("Value %s is not currently set for %s", value, tag);
-                    }
-                } else {
-                    ui_current_print_line("Value %s not a valid option for field: %s", value, tag);
-                }
-                break;
-            case FIELD_TEXT_MULTI:
-                if (!g_str_has_prefix(value, "val")) {
-                    ui_current_print_line("No such value %s for %s", value, tag);
-                    break;
-                }
-                if (strlen(value) < 4) {
-                    ui_current_print_line("No such value %s for %s", value, tag);
-                    break;
-                }
-
-                int index = strtol(&value[3], NULL, 10);
-                if ((index < 1) || (index > form_get_value_count(current->form, tag))) {
-                    ui_current_print_line("No such value %s for %s", value, tag);
-                    break;
-                }
-
-                removed = form_remove_text_multi_value(current->form, tag, index);
-                if (removed) {
-                    ui_current_print_line("Field updated...");
-                    ui_show_form_field(current, current->form, tag);
-                } else {
-                    ui_current_print_line("Could not remove %s from %s", value, tag);
-                }
-                break;
-            case FIELD_JID_MULTI:
-                removed = form_remove_value(current->form, tag, value);
-                if (removed) {
-                    ui_current_print_line("Field updated...");
-                    ui_show_form_field(current, current->form, tag);
-                } else {
-                    ui_current_print_line("Field %s does not contain %s", tag, value);
-                }
-                break;
-            default:
-                ui_current_print_line("Remove command not valid for field: %s", tag);
-                break;
-            }
-        }
-    }
-
     if ((g_strcmp0(args[0], "submit") == 0) ||
             (g_strcmp0(args[0], "cancel") == 0)) {
+        if (current->form) {
+            cmd_autocomplete_remove_form_fields(current->form);
+        }
+
         wins_close_current();
         current = wins_get_by_recipient(room);
         if (current == NULL) {
@@ -2104,6 +2097,256 @@ cmd_form(gchar **args, struct cmd_help_t help)
 
     g_strfreev(split_recipient);
 
+    return TRUE;
+}
+
+gboolean
+cmd_kick(gchar **args, struct cmd_help_t help)
+{
+    jabber_conn_status_t conn_status = jabber_get_connection_status();
+
+    if (conn_status != JABBER_CONNECTED) {
+        cons_show("You are not currently connected.");
+        return TRUE;
+    }
+
+    win_type_t win_type = ui_current_win_type();
+    if (win_type != WIN_MUC) {
+        cons_show("Command '/kick' only applies in chat rooms.");
+        return TRUE;
+    }
+
+    char *room = ui_current_recipient();
+    ProfWin *window = wins_get_by_recipient(room);
+
+    char *nick = args[0];
+    if (nick) {
+        if (muc_roster_contains_nick(room, nick)) {
+            char *reason = args[1];
+            iq_room_kick_occupant(room, nick, reason);
+        } else {
+            win_save_vprint(window, '!', NULL, 0, 0, "", "Occupant does not exist: %s", nick);
+        }
+    } else {
+        cons_show("Usage: %s", help.usage);
+    }
+
+    return TRUE;
+}
+
+gboolean
+cmd_ban(gchar **args, struct cmd_help_t help)
+{
+    jabber_conn_status_t conn_status = jabber_get_connection_status();
+
+    if (conn_status != JABBER_CONNECTED) {
+        cons_show("You are not currently connected.");
+        return TRUE;
+    }
+
+    win_type_t win_type = ui_current_win_type();
+    if (win_type != WIN_MUC) {
+        cons_show("Command '/ban' only applies in chat rooms.");
+        return TRUE;
+    }
+
+    char *room = ui_current_recipient();
+
+    char *jid = args[0];
+    if (jid) {
+        char *reason = args[1];
+        iq_room_affiliation_set(room, jid, "outcast", reason);
+    } else {
+        cons_show("Usage: %s", help.usage);
+    }
+    return TRUE;
+}
+
+gboolean
+cmd_subject(gchar **args, struct cmd_help_t help)
+{
+    jabber_conn_status_t conn_status = jabber_get_connection_status();
+
+    if (conn_status != JABBER_CONNECTED) {
+        cons_show("You are not currently connected.");
+        return TRUE;
+    }
+
+    win_type_t win_type = ui_current_win_type();
+    if (win_type != WIN_MUC) {
+        cons_show("Command '/room' does not apply to this window.");
+        return TRUE;
+    }
+
+    char *room = ui_current_recipient();
+    ProfWin *window = wins_get_by_recipient(room);
+
+    if (args[0] == NULL) {
+        char *subject = muc_subject(room);
+        if (subject) {
+            win_save_vprint(window, '!', NULL, NO_EOL, COLOUR_ROOMINFO, "", "Room subject: ");
+            win_save_vprint(window, '!', NULL, NO_DATE, 0, "", "%s", subject);
+        } else {
+            win_save_print(window, '!', NULL, 0, COLOUR_ROOMINFO, "", "Room has no subject");
+        }
+        return TRUE;
+    }
+
+    if (g_strcmp0(args[0], "set") == 0) {
+        if (args[1]) {
+            message_send_groupchat_subject(room, args[1]);
+        } else {
+            cons_show("Usage: %s", help.usage);
+        }
+        return TRUE;
+    }
+
+    if (g_strcmp0(args[0], "clear") == 0) {
+        message_send_groupchat_subject(room, NULL);
+        return TRUE;
+    }
+
+    cons_show("Usage: %s", help.usage);
+    return TRUE;
+}
+
+gboolean
+cmd_affiliation(gchar **args, struct cmd_help_t help)
+{
+    jabber_conn_status_t conn_status = jabber_get_connection_status();
+
+    if (conn_status != JABBER_CONNECTED) {
+        cons_show("You are not currently connected.");
+        return TRUE;
+    }
+
+    win_type_t win_type = ui_current_win_type();
+    if (win_type != WIN_MUC) {
+        cons_show("Command '/affiliation' does not apply to this window.");
+        return TRUE;
+    }
+
+    char *cmd = args[0];
+    if (cmd == NULL) {
+        cons_show("Usage: %s", help.usage);
+        return TRUE;
+    }
+
+    char *affiliation = args[1];
+    if ((affiliation != NULL) &&
+            (g_strcmp0(affiliation, "owner") != 0) &&
+            (g_strcmp0(affiliation, "admin") != 0) &&
+            (g_strcmp0(affiliation, "member") != 0) &&
+            (g_strcmp0(affiliation, "none") != 0) &&
+            (g_strcmp0(affiliation, "outcast") != 0)) {
+        cons_show("Usage: %s", help.usage);
+        return TRUE;
+    }
+
+    char *room = ui_current_recipient();
+    ProfWin *window = wins_get_by_recipient(room);
+
+    if (g_strcmp0(cmd, "list") == 0) {
+        if (!affiliation) {
+            iq_room_affiliation_list(room, "owner");
+            iq_room_affiliation_list(room, "admin");
+            iq_room_affiliation_list(room, "member");
+            iq_room_affiliation_list(room, "outcast");
+        } else if (g_strcmp0(affiliation, "none") == 0) {
+            win_save_print(window, '!', NULL, 0, 0, "", "Cannot list users with no affiliation.");
+        } else {
+            iq_room_affiliation_list(room, affiliation);
+        }
+        return TRUE;
+    }
+
+    if (g_strcmp0(cmd, "set") == 0) {
+        if (!affiliation) {
+            cons_show("Usage: %s", help.usage);
+            return TRUE;
+        }
+
+        char *jid = args[2];
+        if (jid == NULL) {
+            cons_show("Usage: %s", help.usage);
+            return TRUE;
+        } else {
+            char *reason = args[3];
+            iq_room_affiliation_set(room, jid, affiliation, reason);
+            return TRUE;
+        }
+    }
+
+    cons_show("Usage: %s", help.usage);
+    return TRUE;
+}
+
+gboolean
+cmd_role(gchar **args, struct cmd_help_t help)
+{
+    jabber_conn_status_t conn_status = jabber_get_connection_status();
+
+    if (conn_status != JABBER_CONNECTED) {
+        cons_show("You are not currently connected.");
+        return TRUE;
+    }
+
+    win_type_t win_type = ui_current_win_type();
+    if (win_type != WIN_MUC) {
+        cons_show("Command '/role' does not apply to this window.");
+        return TRUE;
+    }
+
+    char *cmd = args[0];
+    if (cmd == NULL) {
+        cons_show("Usage: %s", help.usage);
+        return TRUE;
+    }
+
+    char *role = args[1];
+    if ((role != NULL ) &&
+            (g_strcmp0(role, "visitor") != 0) &&
+            (g_strcmp0(role, "participant") != 0) &&
+            (g_strcmp0(role, "moderator") != 0) &&
+            (g_strcmp0(role, "none") != 0)) {
+        cons_show("Usage: %s", help.usage);
+        return TRUE;
+    }
+
+    char *room = ui_current_recipient();
+    ProfWin *window = wins_get_by_recipient(room);
+
+    if (g_strcmp0(cmd, "list") == 0) {
+        if (!role) {
+            iq_room_role_list(room, "moderator");
+            iq_room_role_list(room, "participant");
+            iq_room_role_list(room, "visitor");
+        } else if (g_strcmp0(role, "none") == 0) {
+            win_save_print(window, '!', NULL, 0, 0, "", "Cannot list users with no role.");
+        } else {
+            iq_room_role_list(room, role);
+        }
+        return TRUE;
+    }
+
+    if (g_strcmp0(cmd, "set") == 0) {
+        if (!role) {
+            cons_show("Usage: %s", help.usage);
+            return TRUE;
+        }
+
+        char *nick = args[2];
+        if (nick == NULL) {
+            cons_show("Usage: %s", help.usage);
+            return TRUE;
+        } else {
+            char *reason = args[3];
+            iq_room_role_set(room, nick, role, reason);
+            return TRUE;
+        }
+    }
+
+    cons_show("Usage: %s", help.usage);
     return TRUE;
 }
 
@@ -2125,13 +2368,7 @@ cmd_room(gchar **args, struct cmd_help_t help)
 
     if ((g_strcmp0(args[0], "accept") != 0) &&
             (g_strcmp0(args[0], "destroy") != 0) &&
-            (g_strcmp0(args[0], "config") != 0) &&
-            (g_strcmp0(args[0], "subject") != 0) &&
-            (g_strcmp0(args[0], "kick") != 0) &&
-            (g_strcmp0(args[0], "ban") != 0) &&
-            (g_strcmp0(args[0], "role") != 0) &&
-            (g_strcmp0(args[0], "affiliation") != 0) &&
-            (g_strcmp0(args[0], "info") != 0)) {
+            (g_strcmp0(args[0], "config") != 0)) {
         cons_show("Usage: %s", help.usage);
         return TRUE;
     }
@@ -2145,151 +2382,6 @@ cmd_room(gchar **args, struct cmd_help_t help)
         ui_index = 0;
     }
 
-    if (g_strcmp0(args[0], "info") == 0) {
-        iq_room_info_request(room);
-        ui_show_room_info(window, room);
-        return TRUE;
-    }
-
-    if (g_strcmp0(args[0], "subject") == 0) {
-        if (args[1] == NULL) {
-            char *subject = muc_subject(room);
-            if (subject) {
-                win_save_vprint(window, '!', NULL, NO_EOL, COLOUR_ROOMINFO, "", "Room subject: ");
-                win_save_vprint(window, '!', NULL, NO_DATE, 0, "", "%s", subject);
-            } else {
-                win_save_print(window, '!', NULL, 0, COLOUR_ROOMINFO, "", "Room has no subject");
-            }
-            return TRUE;
-        }
-
-        if (g_strcmp0(args[1], "set") == 0) {
-            if (args[2]) {
-                message_send_groupchat_subject(room, args[2]);
-            } else {
-                cons_show("Usage: %s", help.usage);
-            }
-            return TRUE;
-        }
-
-        if (g_strcmp0(args[1], "clear") == 0) {
-            message_send_groupchat_subject(room, NULL);
-            return TRUE;
-        }
-
-        cons_show("Usage: %s", help.usage);
-        return TRUE;
-    }
-
-    if (g_strcmp0(args[0], "kick") == 0) {
-        char *nick = args[1];
-        if (nick) {
-            if (muc_roster_contains_nick(room, nick)) {
-                char *reason = args[2];
-                iq_room_kick_occupant(room, nick, reason);
-            } else {
-                win_save_vprint(window, '!', NULL, 0, 0, "", "Occupant does not exist: %s", nick);
-            }
-        } else {
-            cons_show("Usage: %s", help.usage);
-        }
-        return TRUE;
-    }
-
-    if (g_strcmp0(args[0], "ban") == 0) {
-        char *jid = args[1];
-        if (jid) {
-            char *reason = args[2];
-            iq_room_affiliation_set(room, jid, "outcast", reason);
-        } else {
-            cons_show("Usage: %s", help.usage);
-        }
-        return TRUE;
-    }
-
-    if (g_strcmp0(args[0], "affiliation") == 0) {
-        char *cmd = args[1];
-        if (cmd == NULL) {
-            cons_show("Usage: %s", help.usage);
-            return TRUE;
-        }
-
-        char *affiliation = args[2];
-        if ((g_strcmp0(affiliation, "owner") != 0) &&
-                (g_strcmp0(affiliation, "admin") != 0) &&
-                (g_strcmp0(affiliation, "member") != 0) &&
-                (g_strcmp0(affiliation, "none") != 0) &&
-                (g_strcmp0(affiliation, "outcast") != 0)) {
-            cons_show("Usage: %s", help.usage);
-            return TRUE;
-        }
-
-        if (g_strcmp0(cmd, "list") == 0) {
-            if (g_strcmp0(affiliation, "none") == 0) {
-                win_save_print(window, '!', NULL, 0, 0, "", "Cannot list users with no affiliation.");
-            } else {
-                iq_room_affiliation_list(room, affiliation);
-            }
-            return TRUE;
-        }
-
-        if (g_strcmp0(cmd, "set") == 0) {
-            char *jid = args[3];
-            if (jid == NULL) {
-                cons_show("Usage: %s", help.usage);
-                return TRUE;
-            } else {
-                char *reason = args[4];
-                iq_room_affiliation_set(room, jid, affiliation, reason);
-                return TRUE;
-            }
-        }
-
-        return TRUE;
-    }
-
-    if (g_strcmp0(args[0], "role") == 0) {
-        char *cmd = args[1];
-        if (cmd == NULL) {
-            cons_show("Usage: %s", help.usage);
-            return TRUE;
-        }
-
-        char *role = args[2];
-        if ((g_strcmp0(role, "visitor") != 0) &&
-                (g_strcmp0(role, "participant") != 0) &&
-                (g_strcmp0(role, "moderator") != 0) &&
-                (g_strcmp0(role, "none") != 0)) {
-            cons_show("Usage: %s", help.usage);
-            return TRUE;
-        }
-
-        if (g_strcmp0(cmd, "list") == 0) {
-            if (g_strcmp0(role, "none") == 0) {
-                win_save_print(window, '!', NULL, 0, 0, "", "Cannot list users with no role.");
-            } else if (g_strcmp0(role, "visitor") == 0) {
-                win_save_print(window, '!', NULL, 0, 0, "", "Cannot list users with visitor role.");
-            } else {
-                iq_room_role_list(room, role);
-            }
-            return TRUE;
-        }
-
-        if (g_strcmp0(cmd, "set") == 0) {
-            char *nick = args[3];
-            if (nick == NULL) {
-                cons_show("Usage: %s", help.usage);
-                return TRUE;
-            } else {
-                char *reason = args[4];
-                iq_room_role_set(room, nick, role, reason);
-                return TRUE;
-            }
-        }
-
-        return TRUE;
-    }
-
     if (g_strcmp0(args[0], "accept") == 0) {
         gboolean requires_config = muc_requires_config(room);
         if (!requires_config) {
@@ -2299,13 +2391,12 @@ cmd_room(gchar **args, struct cmd_help_t help)
             iq_confirm_instant_room(room);
             muc_set_requires_config(room, FALSE);
             win_save_print(window, '!', NULL, 0, COLOUR_ROOMINFO, "", "Room unlocked.");
-            cons_show("Room unlocked: %s (%d)", room, ui_index);
             return TRUE;
         }
     }
 
     if (g_strcmp0(args[0], "destroy") == 0) {
-        iq_destroy_instant_room(room);
+        iq_destroy_room(room);
         return TRUE;
     }
 
@@ -2321,6 +2412,50 @@ cmd_room(gchar **args, struct cmd_help_t help)
             iq_request_room_config_form(room);
         }
         return TRUE;
+    }
+
+    return TRUE;
+}
+
+gboolean
+cmd_occupants(gchar **args, struct cmd_help_t help)
+{
+    jabber_conn_status_t conn_status = jabber_get_connection_status();
+
+    if (conn_status != JABBER_CONNECTED) {
+        cons_show("You are not currently connected.");
+        return TRUE;
+    }
+
+    if (g_strcmp0(args[0], "default") == 0) {
+        if (g_strcmp0(args[1], "show") == 0) {
+            cons_show("Occupant list enabled.");
+            prefs_set_boolean(PREF_OCCUPANTS, TRUE);
+            return TRUE;
+        } else if (g_strcmp0(args[1], "hide") == 0) {
+            cons_show("Occupant list disabled.");
+            prefs_set_boolean(PREF_OCCUPANTS, FALSE);
+            return TRUE;
+        } else {
+            cons_show("Usage: %s", help.usage);
+            return TRUE;
+        }
+    }
+
+    win_type_t win_type = ui_current_win_type();
+    if (win_type != WIN_MUC) {
+        cons_show("Cannot show/hide occupant list when not in chat room.");
+        return TRUE;
+    }
+
+    char *room = ui_current_recipient();
+
+    if (g_strcmp0(args[0], "show") == 0) {
+        ui_room_show_occupants(room);
+    } else if (g_strcmp0(args[0], "hide") == 0) {
+        ui_room_hide_occupants(room);
+    } else {
+        cons_show("Usage: %s", help.usage);
     }
 
     return TRUE;
@@ -2766,6 +2901,16 @@ cmd_leave(gchar **args, struct cmd_help_t help)
     ui_close_win(index);
 
     return TRUE;
+}
+
+gboolean
+cmd_privileges(gchar **args, struct cmd_help_t help)
+{
+    gboolean result = _cmd_set_boolean_preference(args[0], help, "MUC privileges", PREF_MUC_PRIVILEGES);
+
+    ui_redraw_all_room_rosters();
+
+    return result;
 }
 
 gboolean

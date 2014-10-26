@@ -822,6 +822,15 @@ _cons_theme_setting(void)
 }
 
 static void
+_cons_privileges_setting(void)
+{
+    if (prefs_get_boolean(PREF_MUC_PRIVILEGES))
+        cons_show("MUC privileges (/privileges)  : ON");
+    else
+        cons_show("MUC privileges (/privileges)  : OFF");
+}
+
+static void
 _cons_beep_setting(void)
 {
     if (prefs_get_boolean(PREF_BEEP))
@@ -846,6 +855,15 @@ _cons_splash_setting(void)
         cons_show("Splash screen (/splash)       : ON");
     else
         cons_show("Splash screen (/splash)       : OFF");
+}
+
+static void
+_cons_occupants_setting(void)
+{
+    if (prefs_get_boolean(PREF_OCCUPANTS))
+        cons_show("Occupants (/occupants)        : show");
+    else
+        cons_show("Occupants (/occupants)        : hide");
 }
 
 static void
@@ -916,6 +934,8 @@ _cons_show_ui_prefs(void)
     cons_vercheck_setting();
     cons_mouse_setting();
     cons_statuses_setting();
+    cons_occupants_setting();
+    cons_privileges_setting();
     cons_titlebar_setting();
 
     cons_alert();
@@ -1276,7 +1296,6 @@ _cons_help(void)
     cons_show("/help roster     - List commands for manipulating your roster.");
     cons_show("/help service    - List service discovery commands.");
     cons_show("/help settings   - List commands for changing settings.");
-    cons_show("/help other      - Other commands.");
     cons_show("/help navigation - How to navigate around Profanity.");
     cons_show("/help [command]  - Detailed help on a specific command.");
     cons_show("");
@@ -1290,16 +1309,17 @@ _cons_navigation_help(void)
     cons_show("");
     cons_show("Navigation:");
     cons_show("");
-    cons_show("Alt-1 (F1)               : This console window.");
-    cons_show("Alt-2..Alt-0 (F2..F10)   : Chat windows.");
-    cons_show("Alt-LEFT                 : Previous chat window");
-    cons_show("Alt-RIGHT                : Next chat window");
-    cons_show("UP, DOWN                 : Navigate input history.");
-    cons_show("LEFT, RIGHT, HOME, END   : Edit current input.");
-    cons_show("CTRL-LEFT, CTRL-RIGHT    : Jump word in input.");
-    cons_show("ESC                      : Clear current input.");
-    cons_show("TAB                      : Autocomplete.");
-    cons_show("PAGE UP, PAGE DOWN       : Page the main window.");
+    cons_show("Alt-1 (F1)                       : This console window.");
+    cons_show("Alt-2..Alt-0 (F2..F10)           : Chat windows.");
+    cons_show("Alt-LEFT                         : Previous chat window");
+    cons_show("Alt-RIGHT                        : Next chat window");
+    cons_show("UP, DOWN                         : Navigate input history.");
+    cons_show("LEFT, RIGHT, HOME, END           : Edit current input.");
+    cons_show("CTRL-LEFT, CTRL-RIGHT            : Jump word in input.");
+    cons_show("ESC                              : Clear current input.");
+    cons_show("TAB                              : Autocomplete.");
+    cons_show("PAGE UP, PAGE DOWN               : Page the main window.");
+    cons_show("SHIFT-PAGE UP, SHIFT-PAGE DOWN   : Page the main window.");
     cons_show("");
 
     cons_alert();
@@ -1508,10 +1528,12 @@ console_init_module(void)
     cons_show_account_list = _cons_show_account_list;
     cons_show_account = _cons_show_account;
     cons_theme_setting = _cons_theme_setting;
+    cons_privileges_setting = _cons_privileges_setting;
     cons_beep_setting = _cons_beep_setting;
     cons_flash_setting = _cons_flash_setting;
     cons_splash_setting = _cons_splash_setting;
     cons_autoconnect_setting = _cons_autoconnect_setting;
+    cons_occupants_setting = _cons_occupants_setting;
     cons_vercheck_setting = _cons_vercheck_setting;
     cons_mouse_setting = _cons_mouse_setting;
     cons_statuses_setting = _cons_statuses_setting;

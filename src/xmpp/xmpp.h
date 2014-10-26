@@ -164,7 +164,6 @@ void (*message_send_paused)(const char * const recipient);
 void (*message_send_gone)(const char * const recipient);
 void (*message_send_invite)(const char * const room, const char * const contact,
     const char * const reason);
-void (*message_send_duck)(const char * const query);
 
 // presence functions
 void (*presence_subscription)(const char * const jid, const jabber_subscr_t action);
@@ -186,7 +185,7 @@ void (*iq_disco_info_request)(gchar *jid);
 void (*iq_disco_items_request)(gchar *jid);
 void (*iq_set_autoping)(int seconds);
 void (*iq_confirm_instant_room)(const char * const room_jid);
-void (*iq_destroy_instant_room)(const char * const room_jid);
+void (*iq_destroy_room)(const char * const room_jid);
 void (*iq_request_room_config_form)(const char * const room_jid);
 void (*iq_submit_room_config)(const char * const room, DataForm *form);
 void (*iq_room_config_cancel)(const char * const room_jid);

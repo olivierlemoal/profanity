@@ -79,7 +79,6 @@ gboolean cmd_decline(gchar **args, struct cmd_help_t help);
 gboolean cmd_disco(gchar **args, struct cmd_help_t help);
 gboolean cmd_disconnect(gchar **args, struct cmd_help_t help);
 gboolean cmd_dnd(gchar **args, struct cmd_help_t help);
-gboolean cmd_duck(gchar **args, struct cmd_help_t help);
 gboolean cmd_flash(gchar **args, struct cmd_help_t help);
 gboolean cmd_gone(gchar **args, struct cmd_help_t help);
 gboolean cmd_grlog(gchar **args, struct cmd_help_t help);
@@ -126,5 +125,14 @@ gboolean cmd_alias(gchar **args, struct cmd_help_t help);
 gboolean cmd_xmlconsole(gchar **args, struct cmd_help_t help);
 gboolean cmd_ping(gchar **args, struct cmd_help_t help);
 gboolean cmd_form(gchar **args, struct cmd_help_t help);
+gboolean cmd_occupants(gchar **args, struct cmd_help_t help);
+gboolean cmd_kick(gchar **args, struct cmd_help_t help);
+gboolean cmd_ban(gchar **args, struct cmd_help_t help);
+gboolean cmd_subject(gchar **args, struct cmd_help_t help);
+gboolean cmd_affiliation(gchar **args, struct cmd_help_t help);
+gboolean cmd_role(gchar **args, struct cmd_help_t help);
+gboolean cmd_privileges(gchar **args, struct cmd_help_t help);
+
+gboolean cmd_form_field(char *tag, gchar **args);
 
 #endif

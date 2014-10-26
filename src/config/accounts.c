@@ -36,6 +36,7 @@
 #include <string.h>
 
 #include <glib.h>
+#include <glib/gstdio.h>
 
 #include "accounts.h"
 
@@ -79,6 +80,10 @@ _accounts_load(void)
     all_ac = autocomplete_new();
     enabled_ac = autocomplete_new();
     accounts_loc = _get_accounts_file();
+
+    if (g_file_test(accounts_loc, G_FILE_TEST_EXISTS)) {
+        g_chmod(accounts_loc, S_IRUSR | S_IWUSR);
+    }
 
     accounts = g_key_file_new();
     g_key_file_load_from_file(accounts, accounts_loc, G_KEY_FILE_KEEP_COMMENTS,
@@ -431,6 +436,24 @@ _accounts_clear_password(const char * const account_name)
 {
     if (accounts_account_exists(account_name)) {
         g_key_file_remove_key(accounts, account_name, "password", NULL);
+        _save_accounts();
+    }
+}
+
+static void
+_accounts_clear_server(const char * const account_name)
+{
+    if (accounts_account_exists(account_name)) {
+        g_key_file_remove_key(accounts, account_name, "server", NULL);
+        _save_accounts();
+    }
+}
+
+static void
+_accounts_clear_port(const char * const account_name)
+{
+    if (accounts_account_exists(account_name)) {
+        g_key_file_remove_key(accounts, account_name, "port", NULL);
         _save_accounts();
     }
 }
@@ -803,8 +826,16 @@ _save_accounts(void)
 {
     gsize g_data_size;
     gchar *g_accounts_data = g_key_file_to_data(accounts, &g_data_size, NULL);
-    g_file_set_contents(accounts_loc, g_accounts_data, g_data_size, NULL);
+    gchar *xdg_data = xdg_get_data_home();
+    GString *base_str = g_string_new(xdg_data);
+    g_string_append(base_str, "/profanity/");
+    gchar *true_loc = get_file_or_linked(accounts_loc, base_str->str);
+    g_file_set_contents(true_loc, g_accounts_data, g_data_size, NULL);
+    g_chmod(accounts_loc, S_IRUSR | S_IWUSR);
+    g_free(xdg_data);
+    free(true_loc);
     g_free(g_accounts_data);
+    g_string_free(base_str, TRUE);
 }
 
 static gchar *
@@ -856,6 +887,8 @@ accounts_init_module(void)
     accounts_set_priority_all = _accounts_set_priority_all;
     accounts_get_priority_for_presence_type = _accounts_get_priority_for_presence_type;
     accounts_clear_password = _accounts_clear_password;
+    accounts_clear_server = _accounts_clear_server;
+    accounts_clear_port = _accounts_clear_port;
     accounts_clear_otr = _accounts_clear_otr;
     accounts_add_otr_policy = _accounts_add_otr_policy;
 }

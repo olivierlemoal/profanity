@@ -52,7 +52,6 @@ gboolean wins_is_current(ProfWin *window);
 ProfWin * wins_new(const char * const from, win_type_t type);
 int wins_get_total_unread(void);
 void wins_resize_all(void);
-gboolean wins_duck_exists(void);
 GSList * wins_get_chat_recipients(void);
 GSList * wins_get_prune_recipients(void);
 void wins_lost_connection(void);
@@ -63,5 +62,7 @@ GList * wins_get_nums(void);
 gboolean wins_xmlconsole_exists(void);
 ProfWin * wins_get_xmlconsole(void);
 gboolean wins_swap(int source_win, int target_win);
+void wins_hide_subwin(ProfWin *window);
+void wins_show_subwin(ProfWin *window);
 
 #endif

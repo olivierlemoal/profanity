@@ -39,6 +39,8 @@
 #include <string.h>
 
 #include <glib.h>
+#include <glib/gstdio.h>
+
 #ifdef HAVE_NCURSESW_NCURSES_H
 #include <ncursesw/ncurses.h>
 #elif HAVE_NCURSES_H
@@ -79,6 +81,10 @@ prefs_load(void)
 
     log_info("Loading preferences");
     prefs_loc = _get_preferences_file();
+
+    if (g_file_test(prefs_loc, G_FILE_TEST_EXISTS)) {
+        g_chmod(prefs_loc, S_IRUSR | S_IWUSR);
+    }
 
     prefs = g_key_file_new();
     g_key_file_load_from_file(prefs, prefs_loc, G_KEY_FILE_KEEP_COMMENTS,
@@ -400,8 +406,16 @@ _save_prefs(void)
 {
     gsize g_data_size;
     gchar *g_prefs_data = g_key_file_to_data(prefs, &g_data_size, NULL);
-    g_file_set_contents(prefs_loc, g_prefs_data, g_data_size, NULL);
+    gchar *xdg_config = xdg_get_config_home();
+    GString *base_str = g_string_new(xdg_config);
+    g_string_append(base_str, "/profanity/");
+    gchar *true_loc = get_file_or_linked(prefs_loc, base_str->str);
+    g_file_set_contents(true_loc, g_prefs_data, g_data_size, NULL);
+    g_chmod(prefs_loc, S_IRUSR | S_IWUSR);
+    g_free(xdg_config);
+    free(true_loc);
     g_free(g_prefs_data);
+    g_string_free(base_str, TRUE);
 }
 
 static gchar *
@@ -431,10 +445,12 @@ _get_group(preference_t pref)
         case PREF_INTYPE:
         case PREF_HISTORY:
         case PREF_MOUSE:
+        case PREF_OCCUPANTS:
         case PREF_STATUSES:
         case PREF_STATUSES_CONSOLE:
         case PREF_STATUSES_CHAT:
         case PREF_STATUSES_MUC:
+        case PREF_MUC_PRIVILEGES:
             return PREF_GROUP_UI;
         case PREF_STATES:
         case PREF_OUTTYPE:
@@ -493,6 +509,10 @@ _get_key(preference_t pref)
             return "history";
         case PREF_MOUSE:
             return "mouse";
+        case PREF_OCCUPANTS:
+            return "occupants";
+        case PREF_MUC_PRIVILEGES:
+            return "privileges";
         case PREF_STATUSES:
             return "statuses";
         case PREF_STATUSES_CONSOLE:
@@ -566,6 +586,8 @@ _get_default_boolean(preference_t pref)
         case PREF_NOTIFY_ROOM_CURRENT:
         case PREF_NOTIFY_TYPING_CURRENT:
         case PREF_SPLASH:
+        case PREF_OCCUPANTS:
+        case PREF_MUC_PRIVILEGES:
             return TRUE;
         default:
             return FALSE;

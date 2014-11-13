@@ -122,6 +122,10 @@ handle_login_account_success(char *account_name)
 
     log_info("%s logged in successfully", account->jid);
     account_free(account);
+
+    if (prefs_get_boolean(PREF_ROSTER)) {
+        ui_show_roster();
+    }
 }
 
 void
@@ -454,6 +458,8 @@ handle_contact_offline(char *barejid, char *resource, char *status)
         prefs_free_string(show_chat_win);
         jid_destroy(jid);
     }
+
+    ui_roster();
 }
 
 void
@@ -494,6 +500,8 @@ handle_contact_online(char *barejid, Resource *resource,
         prefs_free_string(show_console);
         prefs_free_string(show_chat_win);
     }
+
+    ui_roster();
 }
 
 void
@@ -618,6 +626,14 @@ void
 handle_roster_add(const char * const barejid, const char * const name)
 {
     ui_roster_add(barejid, name);
+}
+
+void
+handle_roster_update(const char * const barejid, const char * const name,
+    GSList *groups, const char * const subscription, gboolean pending_out)
+{
+    roster_update(barejid, name, groups, subscription, pending_out);
+    ui_roster();
 }
 
 void

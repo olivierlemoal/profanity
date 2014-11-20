@@ -50,11 +50,7 @@
 #include "ui/ui.h"
 
 #define BOOKMARK_TIMEOUT 5000
-/* TODO: replace with a preference */
-#define BOOKMARK_AUTOJOIN_MAX 5
 #define DEFAULT_STORAGE STORAGE_PRIVATE
-
-static int autojoin_count;
 
 static Autocomplete bookmark_ac;
 static GList *bookmark_list;
@@ -80,7 +76,6 @@ bookmark_request(void)
     xmpp_conn_t *conn = connection_get_conn();
     xmpp_ctx_t *ctx = connection_get_ctx();
 
-    autojoin_count = 0;
     autocomplete_free(bookmark_ac);
     bookmark_ac = autocomplete_new();
     if (bookmark_list != NULL) {
@@ -368,28 +363,22 @@ _bookmark_handle_private_storage_result(xmpp_conn_t * const conn,
         bookmark_list = g_list_append(bookmark_list, item);
 
         if (autojoin_val) {
-            if (autojoin_count < BOOKMARK_AUTOJOIN_MAX) {
-                Jid *room_jid;
+            Jid *room_jid;
 
-                ++autojoin_count;
-
-                char *account_name = jabber_get_account_name();
-                ProfAccount *account = accounts_get_account(account_name);
-                if (name == NULL) {
-                    name = account->muc_nick;
-                }
-
-                log_debug("Autojoin %s with nick=%s", jid, name);
-                room_jid = jid_create_from_bare_and_resource(jid, name);
-                if (!muc_active(room_jid->barejid)) {
-                    presence_join_room(jid, name, password);
-                    muc_join(jid, name, password, TRUE);
-                }
-                jid_destroy(room_jid);
-                account_free(account);
-            } else {
-                log_debug("Rejected autojoin %s (maximum has been reached)", jid);
+            char *account_name = jabber_get_account_name();
+            ProfAccount *account = accounts_get_account(account_name);
+            if (name == NULL) {
+                name = account->muc_nick;
             }
+
+            log_debug("Autojoin %s with nick=%s", jid, name);
+            room_jid = jid_create_from_bare_and_resource(jid, name);
+            if (!muc_active(room_jid->barejid)) {
+                presence_join_room(jid, name, password);
+                muc_join(jid, name, password, TRUE);
+            }
+            jid_destroy(room_jid);
+            account_free(account);
         }
 
         ptr = xmpp_stanza_get_next(ptr);

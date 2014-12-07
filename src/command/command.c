@@ -95,6 +95,7 @@ static char * _kick_autocomplete(char *input, int *size);
 static char * _ban_autocomplete(char *input, int *size);
 static char * _affiliation_autocomplete(char *input, int *size);
 static char * _role_autocomplete(char *input, int *size);
+static char * _resource_autocomplete(char *input, int *size);
 
 GHashTable *commands = NULL;
 
@@ -272,6 +273,16 @@ static struct cmd_t command_defs[] =
           "",
           "Example : /status buddy@server.com",
           "Example : /status jon",
+          NULL } } },
+
+    { "/resource",
+        cmd_resource, parse_args, 1, 2, NULL,
+        { "/resource set|off [resource]", "Set the contact's resource.",
+        { "/resource set|off [resource]",
+          "----------------------------",
+          "Set the resource to use when chatting to a contact.",
+          "set resource - Set the resource.",
+          "off          - Let the server choose which resource to route messages to.",
           NULL } } },
 
     { "/join",
@@ -1082,6 +1093,7 @@ static Autocomplete form_field_multi_ac;
 static Autocomplete occupants_ac;
 static Autocomplete occupants_default_ac;
 static Autocomplete time_ac;
+static Autocomplete resource_ac;
 
 /*
  * Initialise command autocompleter and history
@@ -1416,6 +1428,14 @@ cmd_init(void)
     autocomplete_add(time_ac, "seconds");
     autocomplete_add(time_ac, "off");
 
+    time_ac = autocomplete_new();
+    autocomplete_add(time_ac, "minutes");
+    autocomplete_add(time_ac, "seconds");
+
+    resource_ac = autocomplete_new();
+    autocomplete_add(resource_ac, "set");
+    autocomplete_add(resource_ac, "off");
+
     cmd_history_init();
 }
 
@@ -1470,6 +1490,7 @@ cmd_uninit(void)
     autocomplete_free(occupants_ac);
     autocomplete_free(occupants_default_ac);
     autocomplete_free(time_ac);
+    autocomplete_free(resource_ac);
 }
 
 gboolean
@@ -1641,11 +1662,20 @@ cmd_reset_autocomplete()
     autocomplete_reset(occupants_ac);
     autocomplete_reset(occupants_default_ac);
     autocomplete_reset(time_ac);
+    autocomplete_reset(resource_ac);
 
     if (ui_current_win_type() == WIN_MUC_CONFIG) {
         ProfWin *window = wins_get_current();
         if (window && window->form) {
             form_reset_autocompleters(window->form);
+        }
+    }
+
+    if (ui_current_win_type() == WIN_CHAT) {
+        char *recipient = ui_current_recipient();
+        PContact contact = roster_get_contact(recipient);
+        if (contact) {
+            p_contact_resource_ac_reset(contact);
         }
     }
 
@@ -1750,6 +1780,13 @@ cmd_execute_default(const char * inp)
             if (status != JABBER_CONNECTED) {
                 ui_current_print_line("You are not currently connected.");
             } else {
+                GString *send_recipient = g_string_new(recipient);
+                ProfWin *current = wins_get_current();
+                if (current && current->chat_resource) {
+                    g_string_append(send_recipient, "/");
+                    g_string_append(send_recipient, current->chat_resource);
+                }
+
 #ifdef HAVE_LIBOTR
                 prof_otrpolicy_t policy = otr_get_policy(recipient);
                 if (policy == PROF_OTRPOLICY_ALWAYS && !otr_is_secure(recipient)) {
@@ -1779,7 +1816,7 @@ cmd_execute_default(const char * inp)
                         cons_show_error("Failed to send message.");
                     }
                 } else {
-                    message_send(inp, recipient);
+                    message_send(inp, send_recipient->str);
                     if (prefs_get_boolean(PREF_CHLOG)) {
                         const char *jid = jabber_get_fulljid();
                         Jid *jidp = jid_create(jid);
@@ -1790,7 +1827,7 @@ cmd_execute_default(const char * inp)
                     ui_outgoing_msg("me", recipient, inp);
                 }
 #else
-                message_send(inp, recipient);
+                message_send(inp, send_recipient->str);
                 if (prefs_get_boolean(PREF_CHLOG)) {
                     const char *jid = jabber_get_fulljid();
                     Jid *jidp = jid_create(jid);
@@ -1800,6 +1837,7 @@ cmd_execute_default(const char * inp)
 
                 ui_outgoing_msg("me", recipient, inp);
 #endif
+                g_string_free(send_recipient, TRUE);
             }
             break;
 
@@ -1941,6 +1979,7 @@ _cmd_complete_parameters(char *input, int *size)
     g_hash_table_insert(ac_funcs, "/ban",           _ban_autocomplete);
     g_hash_table_insert(ac_funcs, "/affiliation",   _affiliation_autocomplete);
     g_hash_table_insert(ac_funcs, "/role",          _role_autocomplete);
+    g_hash_table_insert(ac_funcs, "/resource",      _resource_autocomplete);
 
     char parsed[*size+1];
     i = 0;
@@ -2382,6 +2421,32 @@ _theme_autocomplete(char *input, int *size)
     result = autocomplete_param_with_ac(input, size, "/theme", theme_ac, TRUE);
     if (result != NULL) {
         return result;
+    }
+
+    return NULL;
+}
+
+static char *
+_resource_autocomplete(char *input, int *size)
+{
+    char *found = NULL;
+
+    ProfWin *current = wins_get_current();
+    if (current && current->type == WIN_CHAT) {
+        char *recipient = ui_current_recipient();
+        PContact contact = roster_get_contact(recipient);
+        if (contact) {
+            Autocomplete ac = p_contact_resource_ac(contact);
+            found = autocomplete_param_with_ac(input, size, "/resource set", ac, FALSE);
+            if (found != NULL) {
+                return found;
+            }
+        }
+    }
+
+    found = autocomplete_param_with_ac(input, size, "/resource", resource_ac, FALSE);
+    if (found != NULL) {
+        return found;
     }
 
     return NULL;

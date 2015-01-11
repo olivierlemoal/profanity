@@ -181,7 +181,7 @@ xmpp_stanza_t* stanza_create_bookmarks_pubsub_request(xmpp_ctx_t *ctx);
 xmpp_stanza_t* stanza_create_bookmarks_storage_request(xmpp_ctx_t *ctx);
 
 xmpp_stanza_t* stanza_create_chat_state(xmpp_ctx_t *ctx,
-    const char * const recipient, const char * const state);
+    const char * const fulljid, const char * const state);
 
 xmpp_stanza_t* stanza_create_message(xmpp_ctx_t *ctx,
     const char * const recipient, const char * const type,

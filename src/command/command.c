@@ -278,13 +278,15 @@ static struct cmd_t command_defs[] =
           NULL } } },
 
     { "/resource",
-        cmd_resource, parse_args, 1, 2, NULL,
-        { "/resource set|off [resource]", "Set the contact's resource.",
-        { "/resource set|off [resource]",
-          "----------------------------",
-          "Set the resource to use when chatting to a contact.",
-          "set resource - Set the resource.",
-          "off          - Let the server choose which resource to route messages to.",
+        cmd_resource, parse_args, 1, 2, &cons_resource_setting,
+        { "/resource set|off|title|message [resource]", "Set the contact's resource.",
+        { "/resource set|off|title|message [resource]",
+          "------------------------------------------",
+          "Set the resource to use when chatting to a contact and manage resource display settings.",
+          "set resource   - Set the resource.",
+          "off            - Let the server choose which resource to route messages to.",
+          "title on|off   - Show or hide the current resource in the titlebar.",
+          "message on|off - Show or hide the resource from which a message was recieved.",
           NULL } } },
 
     { "/join",
@@ -1455,6 +1457,8 @@ cmd_init(void)
     resource_ac = autocomplete_new();
     autocomplete_add(resource_ac, "set");
     autocomplete_add(resource_ac, "off");
+    autocomplete_add(resource_ac, "title");
+    autocomplete_add(resource_ac, "message");
 
     cmd_history_init();
 }
@@ -1814,8 +1818,7 @@ cmd_execute_default(const char * inp)
                 if (otr_is_secure(chatwin->barejid)) {
                     char *encrypted = otr_encrypt_message(chatwin->barejid, inp);
                     if (encrypted != NULL) {
-                        gboolean send_state = chat_session_on_message_send(chatwin->barejid);
-                        message_send_chat(chatwin->barejid, chatwin->resource, encrypted, send_state);
+                        message_send_chat(chatwin->barejid, encrypted);
                         otr_free_message(encrypted);
                         if (prefs_get_boolean(PREF_CHLOG)) {
                             const char *jid = jabber_get_fulljid();
@@ -1835,8 +1838,7 @@ cmd_execute_default(const char * inp)
                         cons_show_error("Failed to send message.");
                     }
                 } else {
-                    gboolean send_state = chat_session_on_message_send(chatwin->barejid);
-                    message_send_chat(chatwin->barejid, chatwin->resource, inp, send_state);
+                    message_send_chat(chatwin->barejid, inp);
                     if (prefs_get_boolean(PREF_CHLOG)) {
                         const char *jid = jabber_get_fulljid();
                         Jid *jidp = jid_create(jid);
@@ -1847,8 +1849,7 @@ cmd_execute_default(const char * inp)
                     ui_outgoing_chat_msg("me", chatwin->barejid, inp);
                 }
 #else
-                gboolean send_state = chat_session_on_message_send(chatwin->barejid);
-                message_send_chat(chatwin->barejid, chatwin->resource, inp, send_state);
+                message_send_chat(chatwin->barejid, inp);
                 if (prefs_get_boolean(PREF_CHLOG)) {
                     const char *jid = jabber_get_fulljid();
                     Jid *jidp = jid_create(jid);
@@ -2463,6 +2464,16 @@ _resource_autocomplete(char *input, int *size)
                 return found;
             }
         }
+    }
+
+    found = autocomplete_param_with_func(input, size, "/resource title", prefs_autocomplete_boolean_choice);
+    if (found != NULL) {
+        return found;
+    }
+
+    found = autocomplete_param_with_func(input, size, "/resource message", prefs_autocomplete_boolean_choice);
+    if (found != NULL) {
+        return found;
     }
 
     found = autocomplete_param_with_ac(input, size, "/resource", resource_ac, FALSE);

@@ -46,6 +46,7 @@
 
 #include "profanity.h"
 #include "chat_session.h"
+#include "chat_state.h"
 #include "config/accounts.h"
 #include "config/preferences.h"
 #include "config/theme.h"
@@ -142,7 +143,8 @@ prof_handle_idle(void)
 
         while (curr != NULL) {
             char *barejid = curr->data;
-            chat_session_on_inactivity(barejid);
+            ProfChatWin *chatwin = wins_get_chat(barejid);
+            chat_state_handle_idle(chatwin->barejid, chatwin->state);
             curr = g_slist_next(curr);
         }
 
@@ -160,7 +162,7 @@ prof_handle_activity(void)
 
     if ((status == JABBER_CONNECTED) && (win_type == WIN_CHAT)) {
         ProfChatWin *chatwin = wins_get_current_chat();
-        chat_session_on_activity(chatwin->barejid);
+        chat_state_handle_typing(chatwin->barejid, chatwin->state);
     }
 }
 

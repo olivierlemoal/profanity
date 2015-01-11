@@ -86,8 +86,9 @@ handle_message_error(const char * const jid, const char * const type,
 
     // handle recipient not found ('from' contains a value and type is 'cancel')
     } else if (type != NULL && (strcmp(type, "cancel") == 0)) {
-        ui_handle_recipient_not_found(jid, err_msg);
-        chat_session_on_cancel(jid);
+        log_info("Recipient %s not found: %s", jid, err_msg);
+        Jid *jidp = jid_create(jid);
+        chat_session_remove(jidp->barejid);
 
     // handle any other error from recipient
     } else {
@@ -296,7 +297,7 @@ handle_incoming_private_message(char *fulljid, char *message)
 }
 
 void
-handle_incoming_message(char *barejid, char *message)
+handle_incoming_message(char *barejid, char *resource, char *message)
 {
 #ifdef HAVE_LIBOTR
     gboolean was_decrypted = FALSE;
@@ -318,8 +319,7 @@ handle_incoming_message(char *barejid, char *message)
                 memmove(whitespace_base, whitespace_base+tag_length, tag_length);
                 char *otr_query_message = otr_start_query();
                 cons_show("OTR Whitespace pattern detected. Attempting to start OTR session...");
-                gboolean send_state = chat_session_on_message_send(barejid);
-                message_send_chat(barejid, NULL, otr_query_message, send_state);
+                message_send_chat(barejid, otr_query_message);
             }
         }
     }
@@ -333,11 +333,10 @@ handle_incoming_message(char *barejid, char *message)
     if (policy == PROF_OTRPOLICY_ALWAYS && !was_decrypted && !whitespace_base) {
         char *otr_query_message = otr_start_query();
         cons_show("Attempting to start OTR session...");
-        gboolean send_state = chat_session_on_message_send(barejid);
-        message_send_chat(barejid, NULL, otr_query_message, send_state);
+        message_send_chat(barejid, otr_query_message);
     }
 
-    ui_incoming_msg(barejid, newmessage, NULL);
+    ui_incoming_msg(barejid, resource, newmessage, NULL);
 
     if (prefs_get_boolean(PREF_CHLOG)) {
         const char *jid = jabber_get_fulljid();
@@ -356,7 +355,7 @@ handle_incoming_message(char *barejid, char *message)
 
     otr_free_message(newmessage);
 #else
-    ui_incoming_msg(barejid, message, NULL);
+    ui_incoming_msg(barejid, resource, message, NULL);
 
     if (prefs_get_boolean(PREF_CHLOG)) {
         const char *jid = jabber_get_fulljid();
@@ -376,7 +375,7 @@ handle_delayed_private_message(char *fulljid, char *message, GTimeVal tv_stamp)
 void
 handle_delayed_message(char *barejid, char *message, GTimeVal tv_stamp)
 {
-    ui_incoming_msg(barejid, message, &tv_stamp);
+    ui_incoming_msg(barejid, NULL, message, &tv_stamp);
 
     if (prefs_get_boolean(PREF_CHLOG)) {
         const char *jid = jabber_get_fulljid();
@@ -387,15 +386,45 @@ handle_delayed_message(char *barejid, char *message, GTimeVal tv_stamp)
 }
 
 void
-handle_typing(char *from)
+handle_typing(char *barejid, char *resource)
 {
-    ui_contact_typing(from);
+    ui_contact_typing(barejid, resource);
+    if (ui_chat_win_exists(barejid)) {
+        chat_session_recipient_typing(barejid, resource);
+    }
 }
 
 void
-handle_gone(const char * const from)
+handle_paused(char *barejid, char *resource)
 {
-    ui_recipient_gone(from);
+    if (ui_chat_win_exists(barejid)) {
+        chat_session_recipient_paused(barejid, resource);
+    }
+}
+
+void
+handle_inactive(char *barejid, char *resource)
+{
+    if (ui_chat_win_exists(barejid)) {
+        chat_session_recipient_inactive(barejid, resource);
+    }
+}
+
+void
+handle_gone(const char * const barejid, const char * const resource)
+{
+    ui_recipient_gone(barejid, resource);
+    if (ui_chat_win_exists(barejid)) {
+        chat_session_recipient_gone(barejid, resource);
+    }
+}
+
+void
+handle_activity(const char * const barejid, const char * const resource, gboolean send_states)
+{
+    if (ui_chat_win_exists(barejid)) {
+        chat_session_recipient_active(barejid, resource, send_states);
+    }
 }
 
 void
@@ -433,38 +462,11 @@ handle_contact_offline(char *barejid, char *resource, char *status)
     gboolean updated = roster_contact_offline(barejid, resource, status);
 
     if (resource != NULL && updated) {
-        char *show_console = prefs_get_string(PREF_STATUSES_CONSOLE);
-        char *show_chat_win = prefs_get_string(PREF_STATUSES_CHAT);
-        Jid *jid = jid_create_from_bare_and_resource(barejid, resource);
-        PContact contact = roster_get_contact(barejid);
-        if (p_contact_subscription(contact) != NULL) {
-            if (strcmp(p_contact_subscription(contact), "none") != 0) {
-
-                // show in console if "all"
-                if (g_strcmp0(show_console, "all") == 0) {
-                    cons_show_contact_offline(contact, resource, status);
-
-                // show in console of "online"
-                } else if (g_strcmp0(show_console, "online") == 0) {
-                    cons_show_contact_offline(contact, resource, status);
-                }
-
-                // show in chat win if "all"
-                if (g_strcmp0(show_chat_win, "all") == 0) {
-                    ui_chat_win_contact_offline(contact, resource, status);
-
-                // show in char win if "online" and presence online
-                } else if (g_strcmp0(show_chat_win, "online") == 0) {
-                    ui_chat_win_contact_offline(contact, resource, status);
-                }
-            }
-        }
-        prefs_free_string(show_console);
-        prefs_free_string(show_chat_win);
-        jid_destroy(jid);
+        ui_contact_offline(barejid, resource, status);
     }
 
     rosterwin_roster();
+    chat_session_remove(barejid);
 }
 
 void
@@ -507,6 +509,7 @@ handle_contact_online(char *barejid, Resource *resource,
     }
 
     rosterwin_roster();
+    chat_session_remove(barejid);
 }
 
 void

@@ -71,6 +71,7 @@ static void _create_directories(void);
 static void _connect_default(const char * const account);
 
 static gboolean idle = FALSE;
+static gboolean cont = TRUE;
 
 void
 prof_run(const int disable_tls, char *log_level, char *account_name)
@@ -79,25 +80,27 @@ prof_run(const int disable_tls, char *log_level, char *account_name)
     _connect_default(account_name);
     ui_update();
 
-    char *line = NULL;
-    gboolean cmd_result = TRUE;
-
     log_info("Starting main event loop");
 
-    while(cmd_result) {
-        while(!line) {
-            _check_autoaway();
-            line = ui_readline();
-#ifdef HAVE_LIBOTR
-            otr_poll();
-#endif
-            notify_remind();
-            jabber_process_events();
-            ui_update();
+    char *line = NULL;
+    while(cont) {
+        _check_autoaway();
+
+        line = ui_readline();
+        if (line) {
+            cont = cmd_process_input(line);
+            free(line);
+            line = NULL;
+        } else {
+            cont = TRUE;
         }
-        cmd_result = cmd_process_input(line);
-        ui_input_clear();
-        FREE_SET_NULL(line);
+
+#ifdef HAVE_LIBOTR
+        otr_poll();
+#endif
+        notify_remind();
+        jabber_process_events();
+        ui_update();
     }
 }
 
@@ -209,6 +212,7 @@ _init(const int disable_tls, char *log_level)
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);
+    signal(SIGWINCH, ui_sigwinch_handler);
     _create_directories();
     log_level_t prof_log_level = log_level_from_string(log_level);
     prefs_load();

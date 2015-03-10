@@ -102,6 +102,44 @@ stanza_create_bookmarks_pubsub_request(xmpp_ctx_t *ctx)
 }
 
 xmpp_stanza_t *
+stanza_enable_carbons(xmpp_ctx_t *ctx){
+    xmpp_stanza_t *iq = xmpp_stanza_new(ctx);
+    char *id = create_unique_id("carbons");
+
+    xmpp_stanza_set_name(iq, STANZA_NAME_IQ);
+    xmpp_stanza_set_type(iq, STANZA_TYPE_SET);
+    xmpp_stanza_set_id(iq, id);
+    free(id);
+
+    xmpp_stanza_t *carbons_enable = xmpp_stanza_new(ctx);
+    xmpp_stanza_set_name(carbons_enable, STANZA_NAME_ENABLE);
+    xmpp_stanza_set_ns(carbons_enable, STANZA_NS_CARBONS);
+
+    xmpp_stanza_add_child(iq, carbons_enable);
+
+    return iq;
+}
+
+xmpp_stanza_t *
+stanza_disable_carbons(xmpp_ctx_t *ctx){
+    xmpp_stanza_t *iq = xmpp_stanza_new(ctx);
+    char *id = create_unique_id("carbons");
+
+    xmpp_stanza_set_name(iq, STANZA_NAME_IQ);
+    xmpp_stanza_set_type(iq, STANZA_TYPE_SET);
+    xmpp_stanza_set_id(iq, id);
+    free(id);
+
+    xmpp_stanza_t *carbons_disable = xmpp_stanza_new(ctx);
+    xmpp_stanza_set_name(carbons_disable, STANZA_NAME_DISABLE);
+    xmpp_stanza_set_ns(carbons_disable, STANZA_NS_CARBONS);
+
+    xmpp_stanza_add_child(iq, carbons_disable);
+
+    return iq;
+}
+
+xmpp_stanza_t *
 stanza_create_chat_state(xmpp_ctx_t *ctx, const char * const fulljid, const char * const state)
 {
     xmpp_stanza_t *msg, *chat_state;
@@ -149,7 +187,7 @@ stanza_create_room_subject_message(xmpp_ctx_t *ctx, const char * const room, con
 xmpp_stanza_t *
 stanza_create_message(xmpp_ctx_t *ctx, const char * const recipient,
     const char * const type, const char * const message,
-    const char * const state)
+    const char * const state, gboolean encrypted)
 {
     xmpp_stanza_t *msg, *body, *text;
 
@@ -177,6 +215,14 @@ stanza_create_message(xmpp_ctx_t *ctx, const char * const recipient,
         xmpp_stanza_set_ns(chat_state, STANZA_NS_CHATSTATES);
         xmpp_stanza_add_child(msg, chat_state);
         xmpp_stanza_release(chat_state);
+    }
+
+    if (encrypted) {
+        xmpp_stanza_t *private_carbon = xmpp_stanza_new(ctx);
+        xmpp_stanza_set_name(private_carbon, "private");
+        xmpp_stanza_set_ns(private_carbon, STANZA_NS_CARBONS);
+        xmpp_stanza_add_child(msg, private_carbon);
+        xmpp_stanza_release(private_carbon);
     }
 
     return msg;
